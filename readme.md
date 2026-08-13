@@ -4,6 +4,7 @@
 ![Platform: Windows](https://img.shields.io/badge/Platform-Windows-blue.svg)
 ![Python: 3.11](https://img.shields.io/badge/Python-3.11-yellow.svg)
 
+> 本项目基于 [HaujetZhao/CapsWriter-Offline](https://github.com/HaujetZhao/CapsWriter-Offline) 开发，在原项目离线语音输入能力基础上，增加桌面控制中心、转写管理、AI 配置、浮动结果框、输入历史和发布包。
 CapsWriter-Offline GUI 增强版是一个 Windows 离线语音输入工具。它可以在本地完成语音识别，把听写结果输入到当前光标位置，并提供桌面控制中心来管理快捷键、模型、热词、历史记录、音视频转写、AI 角色、备份和诊断。
 
 ![CapsWriter 控制中心](例图/屏幕截图%202026-08-13%20135513.png)
