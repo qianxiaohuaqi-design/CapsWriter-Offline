@@ -14,6 +14,7 @@ import time
 import threading
 import runpy
 import multiprocessing
+import webbrowser
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -42,6 +43,7 @@ CREATE_NO_WINDOW = 0x08000000 if sys.platform == 'win32' else 0
 GUI_PID_FILE = LOG_DIR / "control_center_gui.pid"
 GUI_PROCESS: subprocess.Popen | None = None
 SHOULD_EXIT = threading.Event()
+CONTROL_CENTER_URL = "http://127.0.0.1:6017"
 
 
 def _is_frozen_app() -> bool:
@@ -52,10 +54,67 @@ def _is_gui_alive() -> bool:
     return bool(GUI_PROCESS and GUI_PROCESS.poll() is None)
 
 
+def _has_visible_control_window() -> bool:
+    if sys.platform != 'win32':
+        return False
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        user32 = ctypes.windll.user32
+        EnumWindowsProc = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+        found = False
+
+        def callback(hwnd, lparam):
+            nonlocal found
+            if not user32.IsWindowVisible(hwnd):
+                return True
+
+            length = user32.GetWindowTextLengthW(hwnd)
+            if length <= 0:
+                return True
+
+            buffer = ctypes.create_unicode_buffer(length + 1)
+            user32.GetWindowTextW(hwnd, buffer, length + 1)
+            title = buffer.value
+            if 'CapsWriter' in title or '127.0.0.1:6017' in title:
+                found = True
+                return False
+            return True
+
+        user32.EnumWindows(EnumWindowsProc(callback), 0)
+        return found
+    except Exception:
+        return False
+
+
+def _open_control_center_browser() -> None:
+    if sys.platform == 'win32':
+        try:
+            os.startfile(CONTROL_CENTER_URL)
+            return
+        except Exception:
+            pass
+    try:
+        webbrowser.open(CONTROL_CENTER_URL)
+    except Exception:
+        pass
+
+
+def _ensure_control_center_visible(delay: float = 2.5) -> None:
+    def worker() -> None:
+        time.sleep(delay)
+        if process_manager.is_port_open('127.0.0.1', 6017) and not _has_visible_control_window():
+            _open_control_center_browser()
+
+    threading.Thread(target=worker, daemon=True).start()
+
+
 def _launch_gui() -> None:
     """打开控制中心 GUI；如果已打开则不重复启动。"""
     global GUI_PROCESS
     if _is_gui_alive():
+        _ensure_control_center_visible(delay=0.2)
         return
 
     env = os.environ.copy()
@@ -76,6 +135,7 @@ def _launch_gui() -> None:
     )
     LOG_DIR.mkdir(exist_ok=True)
     GUI_PID_FILE.write_text(str(GUI_PROCESS.pid), encoding='utf-8')
+    _ensure_control_center_visible()
 
 
 def _stop_gui() -> None:
@@ -132,6 +192,8 @@ def main():
         print(f"CapsWriter 控制中心已在运行 (PID: {existing_control_pid})，本次启动退出")
         if not process_manager.is_port_open('127.0.0.1', 6017):
             _launch_gui()
+        else:
+            _ensure_control_center_visible(delay=0.2)
         return
     CONTROL_PID_FILE.write_text(str(os.getpid()), encoding='utf-8')
 
