@@ -45,13 +45,15 @@ class RuleCorrector:
         new_patterns = {}
 
         for line in rule_text.splitlines():
+            line = line.strip()
             if not line or line.startswith('#'):
                 continue
 
-            parts = line.split(' = ')
+            parts = re.split(r'\s*=\s*', line, maxsplit=1)
             if len(parts) == 2:
                 pattern = parts[0].strip()
                 replacement = parts[1].strip().replace(r'\s', ' ')
+                replacement = re.sub(r'\$(\d+)', r'\\\1', replacement)
                 new_patterns[pattern] = replacement
 
         with self._lock:

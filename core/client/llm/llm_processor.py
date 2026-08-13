@@ -18,6 +18,7 @@ from .llm_constants import estimate_tokens
 from .llm_constants import APIConfig
 from .llm_exceptions import (
     APIException,
+    APIResponseError,
     wrap_openai_error, OpenAIErrorWrapper,
     TimeoutErrorWrapper
 )
@@ -172,8 +173,14 @@ class LLMProcessor:
 
         full_response, total_tokens, generation_time = result
 
+        if not full_response:
+            raise APIResponseError(
+                role_config.provider,
+                reason=f"模型 {role_config.model} 返回空内容，请检查模型名称、思考模式或 API 配置"
+            )
+
         # Token 估算兜底（针对 Ollama 等不返回 usage 的提供商）
-        if total_tokens == 0 and full_response:
+        if total_tokens == 0:
             total_tokens = estimate_tokens(full_response)
             result = (full_response, total_tokens, generation_time)
 

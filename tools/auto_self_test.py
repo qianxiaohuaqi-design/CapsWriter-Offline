@@ -285,7 +285,7 @@ def test_unit_3_webui_and_health(runner: TestRunner):
             'normalize_language_code',
             "'fun_asr_nano'",
             "'qwen_asr'",
-            '打开 models 目录',
+            '打开模型目录',
             '高级运行参数',
         ]
         if all(token in app_source for token in engine_tokens) and "'fun_asr_nano_gguf': 'FunASR-Nano" not in app_source and "'qwen3_asr_gguf': 'Qwen3-ASR" not in app_source:
@@ -585,10 +585,16 @@ def test_unit_8_ai_and_private_config(runner: TestRunner):
             runner.log_fail("AI 角色枚举", f"缺少角色: {sorted(expected_roles - role_names)}")
 
         match = ConfigManager.preview_llm_role_match('\u7ffb\u8bd1 \u6d4b\u8bd5')
-        if match.get('matched') and match.get('role') == '翻译' and match.get('content') == '测试':
-            runner.log_pass("AI 角色触发匹配", "翻译触发词可正确剥离并命中角色")
+        has_active_profile = bool(ConfigManager.load_llm_profiles().get('active_profile'))
+        if has_active_profile:
+            if match.get('matched') and match.get('role') == '翻译' and match.get('content') == '测试':
+                runner.log_pass("AI 角色触发匹配", "翻译触发词可正确剥离并命中角色")
+            else:
+                runner.log_fail("AI 角色触发匹配", f"匹配异常: {match}")
+        elif not match.get('matched'):
+            runner.log_pass("AI 角色触发匹配", "未配置 API 档案时不会误命中未绑定角色")
         else:
-            runner.log_fail("AI 角色触发匹配", f"匹配异常: {match}")
+            runner.log_fail("AI 角色触发匹配", f"未配置 API 档案却命中角色: {match}")
 
         app_source = (BASE_DIR / 'web_gui' / 'app.py').read_text(encoding='utf-8')
         panel_source = (BASE_DIR / 'web_gui' / 'ai_panel.py').read_text(encoding='utf-8')

@@ -859,6 +859,8 @@ class ConfigManager:
             source_key = ConfigManager._get_python_var(path, 'api_key', '')
             raw_name = ConfigManager._get_python_var(path, 'name', path.stem)
             display_name = next((part.strip() for part in str(raw_name).split('|') if part.strip()), path.stem)
+            raw_enabled = ConfigManager._get_python_var(path, 'enabled', True)
+            has_stale_profile = bool(profile_id) and profile is None
             roles.append({
                 'id': role_id,
                 'file': path.name,
@@ -867,7 +869,7 @@ class ConfigManager:
                 'display_name': display_name,
                 'profile_id': profile_id,
                 'profile_name': profile.get('name', '') if profile else '',
-                'enabled': ConfigManager._get_python_var(path, 'enabled', True),
+                'enabled': bool(raw_enabled and not has_stale_profile),
                 'provider': profile.get('provider', provider) if profile else provider,
                 'api_url': profile.get('api_url', ConfigManager._get_python_var(path, 'api_url', '')) if profile else ConfigManager._get_python_var(path, 'api_url', ''),
                 'api_key': profile.get('api_key', get_llm_role_api_key(role_id, provider, source_key)) if profile else get_llm_role_api_key(role_id, provider, source_key),

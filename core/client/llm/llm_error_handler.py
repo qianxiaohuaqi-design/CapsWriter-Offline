@@ -5,6 +5,8 @@ LLM 错误处理和用户提示
 """
 from typing import Optional, Tuple
 from .llm_exceptions import (
+    APIConnectionError,
+    APIResponseError,
     OpenAIErrorWrapper,
     AuthenticationErrorWrapper,
     RateLimitErrorWrapper,
@@ -29,6 +31,9 @@ def get_user_friendly_message(error: Exception) -> str:
     if isinstance(error, OpenAIErrorWrapper):
         return error.user_message
 
+    if isinstance(error, (APIConnectionError, APIResponseError)):
+        return str(error)
+
     # 其他异常
     return f"处理失败: {type(error).__name__}"
 
@@ -51,11 +56,11 @@ def should_fallback_to_original(error: Exception) -> bool:
         return False
 
     # 连接失败：提示用户检查网络和 API 地址
-    if isinstance(error, ConnectionErrorWrapper):
+    if isinstance(error, (ConnectionErrorWrapper, APIConnectionError)):
         return False
 
     # API 响应错误：提示用户检查配置
-    if isinstance(error, APIResponseErrorWrapper):
+    if isinstance(error, (APIResponseErrorWrapper, APIResponseError)):
         return False
 
     # 超时和速率限制：可以降级到原文本

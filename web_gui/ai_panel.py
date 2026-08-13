@@ -517,7 +517,7 @@ def render_ai_panel() -> None:
                                         main_content.refresh()
                                         return
                                     updates = {'enabled': bool(e.value)}
-                                    if e.value and not r.get('profile_id'):
+                                    if e.value and not ConfigManager.get_llm_profile(r.get('profile_id')):
                                         current_data = get_profiles()
                                         current_active = _active_profile(current_data)
                                         if current_active:
