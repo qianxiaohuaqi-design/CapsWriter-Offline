@@ -67,6 +67,7 @@ class ResultHandler:
         # 文件名
         json_filename = file.with_suffix('.json')
         txt_filename = file.with_suffix('.txt')
+        srt_filename = file.with_suffix('.srt')
         merge_filename = file.with_suffix('.merge.txt')
         
         # 1. 保存 merge.txt
@@ -96,8 +97,6 @@ class ResultHandler:
                 words[i]['end'] = min(words[i]['end'], words[i+1]['start'])
             
             text_lines = text_split.splitlines()
-            srt_filename = file.with_suffix('.srt')
-
             srt_from_txt.generate_srt_file(words, text_lines, srt_filename)
         
         # 5. 清理中间生成的 txt
@@ -108,4 +107,18 @@ class ResultHandler:
             except Exception as e:
                 logger.warning(f"清理中间 TXT 文件失败: {e}")
                 
+        cleanup_targets = [
+            (not Config.file_save_srt, srt_filename, 'SRT'),
+            (not Config.file_save_txt, txt_filename, 'TXT'),
+            (not Config.file_save_json, json_filename, 'JSON'),
+            (not Config.file_save_merge, merge_filename, 'MERGE'),
+        ]
+        for should_remove, path, label in cleanup_targets:
+            if should_remove and path.exists():
+                try:
+                    path.unlink()
+                    logger.debug(f"Clean disabled {label} output file: {path}")
+                except Exception as e:
+                    logger.warning(f"Failed to clean disabled {label} output file: {e}")
+
         return text_display

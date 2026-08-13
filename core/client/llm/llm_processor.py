@@ -15,6 +15,7 @@ from .llm_role_config import RoleConfig
 from .llm_interfaces import IContextManager
 from .llm_client_pool import ClientPool
 from .llm_constants import estimate_tokens
+from .llm_constants import APIConfig
 from .llm_exceptions import (
     APIException,
     wrap_openai_error, OpenAIErrorWrapper,
@@ -57,7 +58,8 @@ class LLMProcessor:
         logger.info(f"开始 LLM 处理，模型: {role_config.model}")
 
         # 获取客户端
-        logger.debug(f"获取 LLM 客户端，提供商: {role_config.provider}, API: {role_config.api_url}")
+        effective_api_url = role_config.api_url or APIConfig.DEFAULT_API_URLS.get(role_config.provider, '')
+        logger.debug(f"获取 LLM 客户端，提供商: {role_config.provider}, API: {effective_api_url}, 模型: {role_config.model}")
         client = self.client_pool.get_client(
             provider=role_config.provider,
             api_url=role_config.api_url,

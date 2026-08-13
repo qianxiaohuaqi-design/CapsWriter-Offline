@@ -14,6 +14,12 @@ from core.server.state import console
 from . import logger
 
 
+def _pause_before_exit(prompt: str = '按回车退出') -> None:
+    try:
+        input(prompt)
+    except (RuntimeError, EOFError, OSError):
+        logger.error('当前运行环境没有可用控制台输入，跳过退出等待。')
+
 
 def check_model() -> None:
     """
@@ -69,7 +75,7 @@ def check_model() -> None:
     - 'qwen_asr'
 
         ''', style='bright_red')
-        input('按回车退出')
+        _pause_before_exit('按回车退出')
         sys.exit(1)
 
     # 检查所有必需的文件
@@ -101,7 +107,7 @@ def check_model() -> None:
         error_msg += '\n'
         
         logger.error(error_msg)
-        input('按回车退出')
+        _pause_before_exit('按回车退出')
         sys.exit(1)
 
     # 所有必需文件检查通过

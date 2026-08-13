@@ -155,6 +155,34 @@ models/*.py
 # 日志文件夹（包含 server_*.log 和 client_*.log）
 logs/
 
+# 控制中心上传的待转写音视频缓存
+web_gui/uploads/
+
+# 控制中心生成的转写结果
+web_gui/outputs/
+
+# 控制中心自动配置备份
+web_gui/config_backups/
+
+# 控制中心手动导出的配置包
+web_gui/config_exports/
+
+# 控制中心本地私有密钥配置
+web_gui/private_config.json
+
+# 控制中心本地听写输入历史，可能包含用户隐私内容
+web_gui/input_history.jsonl
+web_gui/input_history_cleared_at.txt
+web_gui/gui_settings.json
+web_gui/llm_profiles.json
+
+# Local agent/test artifacts
+.playwright-mcp/
+assets_backup_old/
+tmp_*.py
+tmp_*.ps1
+capswriter-*.png
+
 # 音频文件
 *.mp3
 *.wav
@@ -163,6 +191,11 @@ logs/
 # 运行生成的临时文件 / 二进制
 *.exe
 *.log
+
+# 内置 FFmpeg 二进制单独随发布包放置，不提交到源码仓库
+tools/ffmpeg/_download/
+tools/ffmpeg/bin/*
+!tools/ffmpeg/bin/.gitkeep
 
 
 
@@ -186,5 +219,7 @@ file_*.txt
 release
 *.dll 
 *.exe
+
+!CapsWriter.spec
 
 models/**/*.cfg

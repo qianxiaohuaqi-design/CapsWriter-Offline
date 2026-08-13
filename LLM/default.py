@@ -4,13 +4,13 @@
 
 # ==================== 基本信息 ====================
 name = ''                           # 角色名称（留空表示默认）
-enabled = False                      # 是否启用此角色
+enabled = True                     # 是否启用此角色（当前关闭，使用纯离线直打上屏）
 
 # ==================== API 配置 ====================
 provider = 'deepseek'                   # API 提供商：'ollama', 'openai', 'deepseek', 'moonshot', 'zhipu', 'claude', 'gemini'
 api_url = ''                            # 留空则自动使用 provider 对应的默认值
-api_key = 'sk-4c756***********************36fb' # API Key
-model = 'deepseek-v4-flash'             # 模型名称
+api_key = '' # API Key
+model = 'deepseek-v4-flash'                 # 模型名称
 
 # ==================== 上下文管理 ====================
 max_context_length = 4096               # 最大上下文长度（token 数）
@@ -23,7 +23,7 @@ enable_read_selection = False           # 是否启用获取选中文字（通�
 selection_max_length = 1024             # 选中文字最大长度
 
 # ==================== 输出配置 ====================
-output_mode = 'typing'                  # 输出方式：'typing' 直接打字, 'toast' 浮动窗口
+output_mode = 'typing'                  # 输出方式：'typing' 直接打字上屏
 
 # ==================== Toast 弹窗配置（仅在 output_mode='toast' 时有效） ====================
 toast_initial_width = 0.5               # 窗口初始宽度（0.5 = 50% 屏幕宽度）
@@ -86,3 +86,5 @@ system_prompt = '''
 用户输入：嗨嗨，这个世界真美好
 润色输出：嗨嗨，这个世界真美好
 '''
+
+profile_id = 'api'

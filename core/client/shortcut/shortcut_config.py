@@ -71,6 +71,12 @@ class Shortcut:
             'caps lock': 'caps_lock',
             ' ': 'space',
             'control': 'ctrl',
+            'right_ctrl': 'ctrl_r',
+            'left_ctrl': 'ctrl_l',
+            'right_alt': 'alt_gr',
+            'left_alt': 'alt_l',
+            'right_shift': 'shift_r',
+            'left_shift': 'shift',
         }
 
         for old, new in aliases.items():

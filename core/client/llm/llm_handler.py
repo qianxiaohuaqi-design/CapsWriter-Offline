@@ -10,6 +10,7 @@ LLM 处理器 - 协调器
 from dataclasses import dataclass
 from typing import Dict, Tuple, Optional, Any
 from pathlib import Path
+import ast
 
 from .llm_role_loader import RoleLoader
 from .llm_context import ContextManager
@@ -23,6 +24,28 @@ from .llm_get_selection import get_selected_text, record_selection_usage
 from . import logger
 from .llm_stop_monitor import StopMonitor
 from core.client.udp.udp_broadcaster import broadcast_output_udp
+from config_client import BASE_DIR
+
+
+CONFIG_CLIENT_PATH = Path(BASE_DIR) / 'config_client.py'
+
+
+def get_live_client_config(var_name: str, default):
+    """Read lightweight user preferences without restarting the client."""
+    try:
+        tree = ast.parse(CONFIG_CLIENT_PATH.read_text(encoding='utf-8'))
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, (ast.Assign, ast.AnnAssign))
+                and any(
+                    isinstance(target, ast.Name) and target.id == var_name
+                    for target in (node.targets if isinstance(node, ast.Assign) else [node.target])
+                )
+            ):
+                return ast.literal_eval(node.value)
+    except Exception:
+        pass
+    return default
 
 
 @dataclass
@@ -203,8 +226,9 @@ class LLMHandler:
             matched_hotwords: 潜在热词列表
         """
         import time
+        from config_client import ClientConfig as Config
         from .llm_output_typing import handle_typing_mode, output_text
-        from .llm_output_toast import handle_toast_mode
+        from .llm_output_overlay import handle_overlay_preview_mode
         from core.client.output.text_output import TextOutput
 
         start_time = time.time()
@@ -216,21 +240,26 @@ class LLMHandler:
 
         # 2. 如果不匹配任何需要处理的角色
         if not role_config:
-
-            # 打字输出
-            await output_text(text, paste)
+            if get_live_client_config('output_destination', getattr(Config, 'output_destination', 'typing')) == 'overlay_preview':
+                result_text = TextOutput.strip_punc(text)
+                from .llm_output_overlay import show_overlay_preview
+                if not show_overlay_preview(result_text):
+                    await output_text(result_text, paste)
+            else:
+                result_text = text
+                await output_text(text, paste)
             
             # 更新全局状态并 UDP 广播
-            self.app.state.set_output_text(text)
-            broadcast_output_udp(text)
+            self.app.state.set_output_text(result_text)
+            broadcast_output_udp(result_text)
 
-            return LLMResult(result=text, role_name=None, processed=False, 
+            return LLMResult(result=result_text, role_name=None, processed=False,
                                 token_count=0, polish_time=0, input_text=text)
 
 
         # 4. 根据输出模式分发处理
-        if role_config.output_mode == 'toast':
-            result, token_count, gen_time = await handle_toast_mode(self, text, role_config, matched_hotwords, content)
+        if get_live_client_config('output_destination', getattr(Config, 'output_destination', 'typing')) == 'overlay_preview' or role_config.output_mode == 'toast':
+            result, token_count, gen_time = await handle_overlay_preview_mode(self, text, role_config, matched_hotwords, content)
         else: # typing
             result, token_count, gen_time = await handle_typing_mode(self, text, paste, matched_hotwords, role_config, content)
 
@@ -302,5 +331,3 @@ if __name__ == "__main__":
             handler.stop()
 
     asyncio.run(run_test_cases())
-
-

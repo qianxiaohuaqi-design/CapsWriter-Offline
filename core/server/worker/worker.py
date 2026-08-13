@@ -10,7 +10,7 @@ import os
 import sys
 import signal
 import atexit
-from multiprocessing import Queue
+from multiprocessing import Event, Queue
 from multiprocessing.managers import ListProxy
 from platform import system
 
@@ -26,13 +26,21 @@ class RecognizerWorker:
     
     统一调度模型加载器与任务处理器，负责识别进程的完整运行。
     """
-    def __init__(self, queue_in: Queue, queue_out: Queue, sockets_id: ListProxy, stdin_fn: int = None):
+    def __init__(
+        self,
+        queue_in: Queue,
+        queue_out: Queue,
+        sockets_id: ListProxy,
+        stdin_fn: int = None,
+        ready_event: Event = None,
+    ):
         # 1. 初始化核心状态
         self.state = WorkerState()
         
         # 2. 初始化核心组件 (注入 state)
         self.loader = ModelLoader()
         self.handler = TaskHandler(queue_in, queue_out, sockets_id, self.state)
+        self.ready_event = ready_event
         
         # 3. 状态追踪
         self.stdin_fn = stdin_fn
@@ -45,14 +53,6 @@ class RecognizerWorker:
                 sys.stdin = os.fdopen(self.stdin_fn)
             except Exception as e:
                 logger.warning(f"Worker 无法接管标准输入: {str(e)}")
-
-        # 注册信号处理器 (优雅退出)
-        def signal_handler(signum, frame):
-            # sig_name = signal.Signals(signum).name
-            # logger.info(f"Worker 接收到信号 {sig_name} ({signum})，开始退出...")
-            # self.stop()
-            # exit(0)
-            ...
 
         # 仅注册主信号
         signal.signal(signal.SIGINT, lambda signum, frame: None)
@@ -78,7 +78,8 @@ class RecognizerWorker:
         )
         
         # 4. 通知主进程模型已加载成功
-        self.handler.queue_out.put(True)
+        if self.ready_event:
+            self.ready_event.set()
         
         # 5. Windows 下物理内存清理 (优化项)
         if system() == 'Windows':
@@ -91,7 +92,8 @@ class RecognizerWorker:
         """
         启动子进程任务循环
         """
-        if self._is_running:return
+        if self._is_running:
+            return
         self._is_running = True
 
         self.initialize()
@@ -108,7 +110,8 @@ class RecognizerWorker:
 
     def stop(self):
         """统一停止 Worker 并释放资源"""
-        if not self._is_running:return
+        if not self._is_running:
+            return
         self._is_running = False
 
         logger.info("正在停止 Worker 并回收资源...")

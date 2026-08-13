@@ -9,21 +9,21 @@
 
 # ====== 纠正示例 ======
 CapsWriter | Caps Rider
-Paraformer | performer 
+Paraformer | performer
 SenseVoice-small
 Fun-ASR-Nano | 放 ASR Nano
 Qwen3-ASR | 千问ASR | 千问3ASR
 Qwen3-TTS | 千问TTS | 千问3TTS
-Claude | 克劳德 | 克劳得 | cloud ~~~ weather | sky 
+Claude | 克劳德 | 克劳得 | cloud ~~~ weather | sky
 Claude Code | cloud cold | cloud code
-我家鸽鸽
+ExampleProject | 示例项目
 config_client.py | config_client 点 py | config_client
 config_server.py | config_server 点 py | config_server
 Llama.cpp | 拉马点 CPP
 
 
 # ====== 专业术语 ======
-CUDA | 酷的 | kuda 
+CUDA | 酷的 | kuda
 PyTorch
 TensorRT
 DirectML
@@ -31,6 +31,229 @@ TensorFlow
 Transformer
 
 # ====== 自定义短语示例 ======
-18200006666 | 我的手机号 | input my phone
-上海市浦东新区张江高科技园区 | input my address
-hello@example.com | 我的邮箱 | input my email
+example-phone | 输入手机号 | input my phone
+example-address | 输入地址 | input my address
+example@example.com | 输入邮箱 | input my email
+
+# ====== 常用英文与科技术语热词 ======
+API | 阿皮 | A PID
+Python | 派森 | 拍森
+Debug | 地八格 | 滴八哥
+GitHub | 极特哈勃 | 吉特哈勃
+Windows | 温度 | 温边
+WebUI | 网页UI | Web UI
+NiceGUI | 尼斯GUI | 耐斯GUI
+Figma | 飞格玛
+Penpot | 喷泼特
+DeepSeek | 深度求索 | 深度思考
+Ollama | 欧拉玛
+JSON | 杰森
+HTML | H T M L
+CSS | C S S
+Markdown | Mark down
+Bug | 拔格 | 八哥
+OK | ok | 欧克
+
+# ====== 常用开发与软件英文热词库 ======
+Cursor | 柯索 | 刻索
+ChatGPT | GPT | 聊天GPT
+Claude 3.5 | 克劳德3.5
+App | A P P
+Docker | 多克
+Git | 吉特 | 极特
+Linux | 莉莉克斯 | 利尼克斯
+Mac | M A C
+Node.js | Node | 诺德
+React | 瑞克特
+Vue | V U E
+JavaScript | JS | 爪哇脚本
+TypeScript | TS | 泰普脚本
+C++ | C加加 | C plus plus
+C# | C井 | C sharp
+Java
+Go
+Rust | 融斯特
+SQL | S Q L
+Redis | 瑞蒂斯
+MongoDB | 蒙哥DB
+Prompt
+Token
+Agent
+Model
+SDK | S D K
+REST API | REST
+HTTP | H T P
+HTTPS | H T P S
+Server | 搜服
+Client | 克莱恩特
+GUI | G U I
+Pull Request | PR
+cc-switch | ccswitch | cc switch | CC switch
+Skill | skill
+Skill.md | skill md | skill 点 md
+AGENTS.md | agents md | agents 点 md
+CLAUDE.md | claude md | claude 点 md
+Antigravity | anti gravity | Google Antigravity | 安提格拉维蒂 | Anti doroning | 安 Tgirl 物体 | 安 t guarantee tea
+Gemini CLI | gemini cli | Gemini C L I
+Claude Code | ClaudeCode | cloud code | cloud cold
+OpenAI
+GitHub Copilot | Copilot
+Windsurf | wind surf
+Cline | C line
+Roo Code | RooCode | roo code
+Continue.dev | Continue
+Aider | ai der
+Devin
+Kiro
+OpenCode | opencode | open code
+OpenClaw | openclaw | open claw
+Grok Build | grok build
+Hermes Agent | Hermes
+Muse Code | muse code
+Replit Agent | replit agent
+Trae
+Goose
+Zed
+Warp
+Bolt.new | bolt new | bolt 点 new
+v0 | v zero | v 零
+Lovable
+Tabnine
+Codeium
+CodeRabbit | code rabbit
+Subagent | sub agent
+Worktree | work tree
+MCP | M C P
+MCP Server | MCP 服务器 | MCP server
+Context7 | context seven | context 7
+
+# ====== 常用编程语言与操作系统 ======
+Python | 派森 | 拍森
+Java
+C++ | C加加 | C plus plus
+C# | C井 | C sharp
+JavaScript | JS | 爪哇脚本
+TypeScript | TS | 泰普脚本
+Go | 勾语言
+Rust | 融斯特 | 鲁斯特
+PHP | P H P
+Swift | 斯威夫特
+Kotlin | 柯特林
+Ruby | 露比
+SQL | S Q L | 数据库语言
+HTML | H T M L
+CSS | C S S
+Shell | 贝壳 | 脚本
+Bash | 巴什
+
+Linux | 莉莉克斯 | 利尼克斯 | 厘怒克斯
+Windows | 温度 | 温边
+macOS | Mac | 苹果系统
+Android | 安卓
+iOS | I O S
+Ubuntu | 乌班图
+CentOS | 桑特OS
+Debian | 德班
+
+# ====== 基础设施与中间件 ======
+Docker | 多克
+Kubernetes | K8s | 库伯内蒂斯
+Nginx | 恩吉克斯
+Apache | 阿帕奇
+Redis | 瑞蒂斯
+MySQL | 麦SQL | 迈SQL
+PostgreSQL | Postgres
+MongoDB | 蒙哥DB
+SQLite | 斯奎莱特
+Kafka | 卡夫卡
+RabbitMQ | 兔子MQ
+
+# ====== 前后端框架与 AI 开发库 ======
+React | 瑞克特
+Vue | V U E
+Angular | 安古拉
+Next.js | Next | 奈克斯特
+Vite
+Node.js | Node | 诺德
+Express
+Spring Boot | Spring | 斯普林
+Django | 姜戈
+Flask | 弗拉斯克
+FastAPI | 快捷API
+PyTorch | 派火炬
+TensorFlow | 张量流
+HuggingFace | 抱抱脸
+CUDA | 酷的 | 酷达
+TensorRT | 坦索RT
+DirectML | 直连ML
+Ollama | 欧拉玛
+DeepSeek | 深度求索 | 深度思考
+ChatGPT | GPT | 聊天GPT
+GPT-4 | GPT4
+Claude | 克劳德
+Gemini | 双子座
+Midjourney | MJ
+Stable Diffusion | SD
+
+# ====== 常用 IDE 与开发工具 ======
+Cursor | 柯索 | 刻索
+PyCharm | 派查姆
+IntelliJ | IDEA
+Visual Studio | VS
+Android Studio | 安卓Studio
+WebStorm | 网络风暴
+Postman | 邮差
+Wireshark | 鲨鱼
+Git | 吉特 | 极特
+GitHub | 极特哈勃 | 吉特哈勃
+GitLab | 吉特拉伯
+Gitee | 码云
+Notion | 诺森
+Slack | 斯莱克
+Discord | 迪斯考德
+Telegram | TG | 电报
+Chrome | 谷歌浏览器
+Edge | 微软浏览器
+Firefox | 火狐
+
+# ====== 数据类型与控制流 =====
+Boolean | 布尔 | bool
+Integer | 整型 | int
+Float | 浮点数 | float
+String | 字符串 | str
+Dictionary | 字典 | dict
+
+# ====== 开发流程与 CLI 指令 ======
+Pull Request | PR
+Pull | 拉取
+Checkout | 切换分支
+Clone | 克隆
+Rebase | 变基
+Stash | 暂存
+Reset | 重置
+Fetch | 抓取
+Hotfix | 热修复
+Patch | 补丁
+Traceback | 堆栈跟踪
+Exception | 异常
+Timeout | 超时
+Cache | 卡什
+Token
+Cookie | 库克
+Session | 会话
+Header | 请求头
+Payload | 负载
+
+# ====== 高频日常与办公英文 ======
+Hello | 哈啰
+OK | ok | 欧克
+Yes | 耶斯
+No | 诺
+Google | 谷歌
+Stop | 停止
+Pause | 暂停
+Resume | 恢复
+Email | 邮箱
+URL | U R L
+PDF | P D F
+Zip | 压缩包

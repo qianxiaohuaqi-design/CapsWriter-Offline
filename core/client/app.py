@@ -91,6 +91,12 @@ class CapsWriterClient:
         self.shortcut.stop()
         self.stream.stop()
 
+        try:
+            from core.ui.modern_overlay.pill_overlay import close_pill_overlay
+            close_pill_overlay()
+        except Exception as e:
+            logger.debug(f"关闭听写浮层时发生错误，已跳过: {e}")
+
         # 2. 托盘资源
         self.tray.stop()
 
@@ -137,5 +143,4 @@ class CapsWriterClient:
             self.loop.run_until_complete(runner.run())
         except RuntimeError:
             ...
-
 

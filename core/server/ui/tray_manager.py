@@ -20,6 +20,9 @@ class TrayManager:
         """初始化系统托盘图标"""
         if not Config.enable_tray:
             return
+        if os.environ.get('CAPSWRITER_CONTROL_CENTER') == '1':
+            logger.info("控制中心总托盘已接管，跳过服务端独立托盘")
+            return
 
         try:
             from . import enable_min_to_tray
@@ -28,7 +31,7 @@ class TrayManager:
             return
 
         # 获取图标路径
-        icon_path = os.path.join(self.app.base_dir, 'assets', 'icon.ico')
+        icon_path = os.path.join(self.app.base_dir, 'assets', 'source', 'capswriter.ico')
         
         # 启用托盘
         enable_min_to_tray(

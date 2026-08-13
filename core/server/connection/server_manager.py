@@ -45,7 +45,10 @@ class SocketManager:
         
         # 0. 启动前自检环境
         if not self._check_port():
-            input("\n按回车键退出...")
+            try:
+                input("\n按回车键退出...")
+            except (RuntimeError, EOFError, OSError):
+                logger.error("当前运行环境没有可用控制台输入，跳过退出等待。")
             return 
 
         self._is_running = True

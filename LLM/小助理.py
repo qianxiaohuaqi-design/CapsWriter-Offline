@@ -3,14 +3,14 @@
 """
 
 # ==================== 基本信息 ====================
-name = '小助理'                         # 角色名称（留空表示默认）
-enabled = True                           # 是否启用此角色
+name = '小助理'                   # 角色名称（留空表示默认）
+enabled = False                           # 是否启用此角色
 
 # ==================== API 配置 ====================
 provider = 'lmstudio'                   # API 提供商：'ollama', 'openai', 'deepseek', 'moonshot', 'zhipu', 'claude', 'gemini'
 api_url = ''                            # 留空则自动使用 provider 对应的默认值
 api_key = ''                            # API Key
-model = 'local-model'                   # 模型名称
+model = 'deepseek-v4-flash'                   # 模型名称
 
 # ==================== 上下文管理 ====================
 max_context_length = 4096               # 最大上下文长度（token 数）
@@ -50,10 +50,6 @@ prompt_prefix_selection = '选中文字：'   # 选中文字前缀
 prompt_prefix_input = '用户输入：'       # 用户输入前缀
 
 # ==================== System Prompt ====================
-system_prompt = '''
-你是一个助手，帮助用户解答问题。
+system_prompt = '\n你是一个助手，帮助用户解答问题。\n\n要求：\n- 按用户的要求输出内容\n- 不要添加任何额外说明\n'
 
-要求：
-- 按用户的要求输出内容
-- 不要添加任何额外说明
-'''
+profile_id = 'api'

@@ -3,14 +3,15 @@
 """
 
 # ==================== 基本信息 ====================
-name = '翻译'                           # 角色名称（留空表示默认）
-enabled = True                           # 是否启用此角色
+name = '翻译'       # 角色名称（留空表示默认）
+enabled = True                            # 是否启用此角色
+profile_id = 'api'
 
 # ==================== API 配置 ====================
 provider = 'lmstudio'                   # API 提供商：'ollama', 'openai', 'deepseek', 'moonshot', 'zhipu', 'claude', 'gemini'
 api_url = ''                            # 留空则自动使用 provider 对应的默认值
 api_key = ''                            # API Key
-model = 'local-model'                   # 模型名称
+model = 'deepseek-v4-flash'                   # 模型名称
 
 # ==================== 上下文管理 ====================
 max_context_length = 4096               # 最大上下文长度（token 数）
@@ -18,7 +19,7 @@ max_context_length = 4096               # 最大上下文长度（token 数）
 # ==================== 功能配置 ====================
 enable_hotwords = False                 # 是否启用热词
 enable_thinking = False                 # 是否启用思考（仅 Ollama）
-enable_history = True                  # 是否保留对话历史
+enable_history = False                  # 是否保留对话历史
 enable_read_selection = True            # 是否启用获取选中文字（通过 Ctrl+C）
 selection_max_length = 2048             # 选中文字最大长度
 
@@ -50,12 +51,4 @@ prompt_prefix_selection = '选中文字：'   # 选中文字前缀
 prompt_prefix_input = '用户输入：'       # 用户输入前缀
 
 # ==================== System Prompt ====================
-system_prompt = '''
-你是一个翻译助手，将用户输入的文本翻译成英文。
-
-要求：
-- 只输出翻译结果，不要解释
-- 保持原文的语气和风格
-- 专业术语要准确翻译
-- 不要添加任何额外说明
-'''
+system_prompt = '\n你是一个翻译助手。请按用户输入中指定的目标语言进行翻译；如果用户没有指定目标语言，默认翻译成俄文。\n\n要求：\n- 只输出翻译结果，不要解释\n- 保持原文的语气和风格\n- 专业术语要准确翻译\n- 不要添加任何额外说明\n'

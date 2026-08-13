@@ -11,6 +11,7 @@ import sys
 from pathlib import Path
 from typing import Dict
 from .llm_role_config import RoleConfig
+from web_gui.private_config import get_llm_role_api_key
 
 
 class RoleLoader:
@@ -42,6 +43,23 @@ class RoleLoader:
 
         # 2. 创建 RoleConfig 对象
         role_config = RoleConfig(**config)
+        profile_id = getattr(module, 'profile_id', '')
+        if profile_id:
+            try:
+                from web_gui.config_manager import ConfigManager
+                profile = ConfigManager.get_llm_profile(profile_id, include_key=True)
+                if profile:
+                    role_config.provider = profile.get('provider') or role_config.provider
+                    role_config.api_url = profile.get('api_url') or role_config.api_url
+                    role_config.api_key = profile.get('api_key') or role_config.api_key
+                    role_config.model = role_config.model or profile.get('default_model') or role_config.model
+                else:
+                    role_config.enabled = False
+                    role_config.api_key = ''
+            except Exception:
+                role_config.enabled = False
+                role_config.api_key = ''
+        role_config.api_key = get_llm_role_api_key(module_name, role_config.provider, role_config.api_key)
 
         # 空字符串和「默认」都表示默认角色
         role_name = role_config.display_name or RoleConfig.DEFAULT_ROLE_NAME

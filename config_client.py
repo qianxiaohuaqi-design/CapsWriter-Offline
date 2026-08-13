@@ -1,6 +1,4 @@
 import os
-from collections.abc import Iterable
-from pathlib import Path
 
 # 版本信息
 __version__ = '2.6'
@@ -17,9 +15,11 @@ class ClientConfig:
     # 快捷键配置列表
     shortcuts = [
         {
-            'key': 'caps_lock',     # 监听大写锁定键
+            'key': 'caps_lock',        # 监听 CapsLock 键，避免 Alt 触发应用菜单栏
+
             'type': 'keyboard',     # 是键盘快捷键
             'suppress': True,      # 阻塞按键（短按会补发）
+
             'hold_mode': True,      # 长按模式
             'enabled': True         # 启用此快捷键
         },
@@ -34,26 +34,42 @@ class ClientConfig:
 
     threshold    = 0.3          # 快捷键触发阈值（秒）
 
-    paste        = False        # 是否以写入剪切板然后模拟 Ctrl-V 粘贴的方式输出结果
+    paste        = False
+    output_destination = 'typing'  # 'typing' writes to cursor; 'overlay_preview' shows confirm-before-insert preview.
+    preview_close_mode = 'auto'  # 'auto' hides by text length; 'manual' waits for user action.
+    preview_base_seconds = 2
+    preview_seconds_per_20_chars = 1
+    preview_max_seconds = 10
     restore_clip = True         # 模拟粘贴后是否恢复剪贴板
-    paste_apps   = ['WeiXin.exe', 'Telegram.exe']  # 匹配时强制粘贴
+    paste_apps   = [
+        'WeiXin.exe',
+        'Telegram.exe',
+        'chrome.exe',
+        'msedge.exe',
+        'firefox.exe',
+        'brave.exe',
+        'ChatGPT.exe',
+        'Gemini.exe',
+        'Code.exe',
+    ]  # 匹配时强制粘贴
 
     enter_apps   = [('happ.exe', 0.5), ('hexin.exe', 0.5)]  # (应用名, 延迟秒数) 输出完成后自动回车，如同花顺，输入股票名后，需要回车才能切换
 
-    save_audio = True           # 是否保存录音文件
+    save_audio = False
+    save_diary = False
     audio_name_len = 20         # 将录音识别结果的前多少个字存储到录音文件名中，建议不要超过200
     
     context = ''                # 提示词上下文，用于辅助 Fun-ASR-Nano 模型识别（例如输入人名、地名、专业术语等）
-    language = 'auto'           # 识别语言：'auto', 'chinese', 'english', 'japanese' 等（各引擎支持范围不同）
+    language = 'auto'
 
     trash_punc = '，。,.'       # 识别结果要消除的末尾标点
     trash_punc_thresh = 8       # 识别结果的单词数量低于阈值时，强制去除末尾标点
     trash_punc_apps = ['WeiXin.exe', ]   # 对于指定的应用，强制去除末尾标点
 
-    traditional_convert = False     # 是否将识别结果转换为繁体中文
+    traditional_convert = False
     traditional_locale = 'zh-hant'  # 繁体地区：'zh-hant'（标准繁体）, 'zh-tw'（台湾繁体）, 'zh-hk'（香港繁体）
 
-    hot = True                 # 是否启用热词替换（统一 RAG 匹配）
+    hot = False                 # 是否启用热词替换（统一 RAG 匹配）
     hot_thresh = 0.85           # RAG 替换热词阈值（高阈值，用于实际替换）
     hot_similar = 0.6           # RAG 相似热词阈值（低阈值，用于 LLM 上下文）
     hot_rule = True             # 是否启用自定义规则替换（基于正则表达式）
@@ -72,7 +88,7 @@ class ClientConfig:
     file_seg_duration = 60      # 转录文件时分段长度
     file_seg_overlap = 4        # 转录文件时分段重叠
 
-    file_save_srt = True        # 转录文件时是否保存 srt 字幕
+    file_save_srt = False        # 转录文件时是否保存 srt 字幕
     file_save_txt = True        # 转录文件时是否保存 txt 文本（按标点切分后的）
     file_save_json = True       # 转录文件时是否保存 json 结果（含原始时间戳）
     file_save_merge = False      # 转录文件时是否保存 merge.txt（未切分的段落长文本）
@@ -126,8 +142,7 @@ r"""
   鼠标键：x1, x2
 
 示例配置：
-  {'key': 'caps_lock', 'type': 'keyboard', 'suppress': False, 'hold_mode': True, 'enabled': True}, 
+  {'key': 'caps_lock', 'type': 'keyboard', 'suppress': True, 'hold_mode': True, 'enabled': True}, 
   {'key': 'f12', 'type': 'keyboard', 'suppress': True, 'hold_mode': True, 'enabled': True}, 
   {'key': 'x2', 'type': 'mouse', 'suppress': True, 'hold_mode': True, 'enabled': True}, 
 """
-

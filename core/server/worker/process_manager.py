@@ -6,9 +6,8 @@
 """
 from __future__ import annotations
 import sys
-import os
-import queue
-from multiprocessing import Process, Manager
+import threading
+from multiprocessing import Event, Process, Manager
 from typing import TYPE_CHECKING
 from ..state import console
 from . import start_worker
@@ -26,12 +25,13 @@ class ProcessManager:
     """
     def __init__(self, app: CapsWriterServer):
         self._process = None
+        self._ready_event = None
         self.app = app
         self.is_alive = False
 
     def start(self):
         """
-        启动识别子进程并等待模型加载完成
+        启动识别子进程，模型加载在后台完成
         
         Returns:
             Process: 启动成功的子进程对象
@@ -47,9 +47,13 @@ class ProcessManager:
         # 使用 Manager 管理共享列表，用于追踪活动连接
         state = self.app.state
         state.sockets_id = Manager().list()
+        self._ready_event = Event()
         
         # 获取标准输入文件描述符，用于 Windows 下的信号传递补丁
-        stdin_fn = sys.stdin.fileno()
+        try:
+            stdin_fn = sys.stdin.fileno()
+        except (AttributeError, OSError, RuntimeError, ValueError):
+            stdin_fn = None
         
         # 3. 创建并启动进程
         self._process = Process(
@@ -57,7 +61,8 @@ class ProcessManager:
             args=(state.queue_in,
                   state.queue_out,
                   state.sockets_id, 
-                  stdin_fn),
+                  stdin_fn,
+                  self._ready_event),
             daemon=True
         )
         self._process.start()
@@ -66,27 +71,22 @@ class ProcessManager:
         state.recognize_process = self._process
         logger.info(f"识别子进程已拉起 (PID: {self._process.pid})")
 
-        # 4. 等待模型加载完成 (轮询方式)
-        self._wait_for_models()
+        # 4. 模型加载放到后台，主进程立即启动网络服务
+        threading.Thread(target=self._wait_for_models, daemon=True).start()
+        logger.info("模型加载在后台进行，WebSocket 服务立即启动")
         
         return self._process
 
     def _wait_for_models(self):
-        """轮询队列直到收到模型加载成功 (True) 或发生错误"""
+        """等待模型加载事件，进程意外退出时同步停止服务"""
         logger.info("正在等待子进程加载模型...")
         
         while self.is_alive:
-            try:
-                # 阻塞最多 100ms
-                status = self.app.state.queue_out.get(timeout=0.1)
-                if status is True:
-                    # 收到 True 说明模型加载成功
-                    break
-            except (queue.Empty, OSError):
-                if self._process and not self._process.is_alive():
-                    self._handle_unexpected_exit()
-                    return
-                continue
+            if self._ready_event and self._ready_event.wait(timeout=0.1):
+                break
+            if self._process and not self._process.is_alive():
+                self._handle_unexpected_exit()
+                return
             
         if not self.is_alive: return
         logger.info("模型加载完成，ASR 服务就绪")
@@ -121,4 +121,3 @@ class ProcessManager:
             if self._process.is_alive():
                 logger.debug("子进程未响应优雅退出，执行强制终止")
                 self._process.terminate()
-            

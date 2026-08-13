@@ -41,6 +41,10 @@ class ShortcutEmulator:
         """
         self._emulating_keys.add(key_name)
 
+        if '+' in key_name:
+            self._emulate_key_combo(key_name)
+            return
+
         key_obj = KeyMapper.name_to_key(key_name)
         if key_obj is not None:
             self._keyboard_controller.press(key_obj)
@@ -48,6 +52,23 @@ class ShortcutEmulator:
             logger.debug(f"[{key_name}] 补发按键成功")
         else:
             logger.warning(f"[{key_name}] 无法识别的按键，跳过补发")
+
+    def _emulate_key_combo(self, key_name: str) -> None:
+        """按顺序补发组合键，主要用于阻塞热键的短按恢复。"""
+        parts = [part.strip() for part in key_name.split('+') if part.strip()]
+        key_objects = []
+        for part in parts:
+            key_obj = KeyMapper.name_to_key(part)
+            if key_obj is None:
+                logger.warning(f"[{key_name}] 组合键包含未知按键 {part}，跳过补发")
+                return
+            key_objects.append(key_obj)
+
+        for key_obj in key_objects:
+            self._keyboard_controller.press(key_obj)
+        for key_obj in reversed(key_objects):
+            self._keyboard_controller.release(key_obj)
+        logger.debug(f"[{key_name}] 补发组合键成功")
 
     def emulate_mouse_click(self, button_name: str) -> None:
         """

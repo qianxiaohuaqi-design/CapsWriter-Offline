@@ -121,20 +121,24 @@ async def paste_text(text: str, restore_clipboard: bool = True):
     logger.debug(f"已复制文本到剪贴板，长度: {len(text)}")
 
     # 粘贴结果（使用 pynput 模拟 Ctrl+V）
-    controller = keyboard.Controller()
-    if platform.system() == 'Darwin':
-        # macOS: Command+V
-        with controller.pressed(keyboard.Key.cmd):
-            controller.tap('v')
-    else:
-        # Windows/Linux: Ctrl+V
-        with controller.pressed(keyboard.Key.ctrl):
-            controller.tap('v')
+    try:
+        controller = keyboard.Controller()
+        if platform.system() == 'Darwin':
+            # macOS: Command+V
+            with controller.pressed(keyboard.Key.cmd):
+                controller.tap('v')
+        else:
+            # Windows/Linux: Ctrl+V
+            with controller.pressed(keyboard.Key.ctrl):
+                controller.tap('v')
+    finally:
+        from core.tools.key_reset import release_all_modifier_keys
+        release_all_modifier_keys()
     
     logger.debug("已发送粘贴命令 (Ctrl+V)")
 
     # 还原剪贴板
     if restore_clipboard and original:
-        await asyncio.sleep(0.1)
+        await asyncio.sleep(0.3)
         pyclip.copy(original)
         logger.debug("剪贴板已恢复")

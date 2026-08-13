@@ -154,56 +154,33 @@ def _create_icon(icon_path: Optional[str] = None):
     """
     创建托盘图标
     
-    优先从指定路径加载图标文件，如果不存在则动态生成。
-    
-    Args:
-        icon_path: 图标文件路径
-        
-    Returns:
-        PIL Image 对象
+    优先从指定路径加载图标文件，如果不存在则加载项目主图标资产。
     """
-    from PIL import Image, ImageDraw
+    from PIL import Image
+    from pathlib import Path
+    from core.tools.icon_assets import ICON_PATH, load_ico_frame
     
-    # 如果图标文件存在，直接加载
-    if icon_path and os.path.exists(icon_path):
-        try:
-            image = Image.open(icon_path)
-            if image.mode != 'RGBA':
-                image = image.convert('RGBA')
-            return image.resize((64, 64), Image.Resampling.LANCZOS)
-        except Exception:
-            pass  # 加载失败则使用动态生成
+    candidates = []
+    if icon_path:
+        candidates.append(icon_path)
+    base_dir = Path(__file__).resolve().parent.parent.parent
+    candidates.append(str(ICON_PATH))
+    candidates.append(str(base_dir / 'assets' / 'ui' / 'capswriter_logo.png'))
 
-    # 动态生成图标
-    size = 64
-    scale = 4
-    real_size = size * scale
+    for path in candidates:
+        if path and os.path.exists(path):
+            try:
+                if str(path).lower().endswith('.ico'):
+                    image = load_ico_frame(path, 64)
+                else:
+                    image = Image.open(path)
+                    if image.mode != 'RGBA':
+                        image = image.convert('RGBA')
+                return image.resize((64, 64), Image.Resampling.LANCZOS)
+            except Exception:
+                pass
 
-    image = Image.new('RGBA', (real_size, real_size), (0, 0, 0, 0))
-    dc = ImageDraw.Draw(image)
-
-    blue = (55, 118, 171)
-    yellow = (255, 211, 67)
-    white = (255, 255, 255)
-
-    # 蓝色圆角背景
-    m = 2 * scale
-    dc.rounded_rectangle(
-        [m, m, real_size - m, real_size - m],
-        radius=real_size // 4,
-        fill=blue
-    )
-
-    # 黄色圆圈
-    center = real_size // 2
-    r = real_size // 3.5
-    dc.ellipse([center - r, center - r, center + r, center + r], fill=yellow)
-
-    # 白色圆点
-    r2 = r // 2
-    dc.ellipse([center - r2, center - r2, center + r2, center + r2], fill=white)
-
-    return image.resize((size, size), Image.Resampling.LANCZOS)
+    return Image.new('RGBA', (64, 64), (0, 0, 0, 0))
 
 
 class _TraySystem:
@@ -346,8 +323,6 @@ def enable_min_to_tray(name: Optional[str] = None, icon_path: Optional[str] = No
         exit_callback: 退出回调函数，当用户点击托盘退出菜单时调用
         more_options: 额外菜单项列表，格式为 [(名称, 回调函数), ...]
     """
-    global _tray_instance
-
     global _tray_instance
 
     # 设置退出回调函数

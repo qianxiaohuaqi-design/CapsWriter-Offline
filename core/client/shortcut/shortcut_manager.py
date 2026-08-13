@@ -11,7 +11,7 @@
 from __future__ import annotations
 import time
 from concurrent.futures import ThreadPoolExecutor
-from typing import TYPE_CHECKING, Dict, List, Optional
+from typing import TYPE_CHECKING, Dict, List, Optional, Set
 
 from pynput import keyboard, mouse
 
@@ -54,6 +54,8 @@ class ShortcutManager:
 
         # 快捷键任务映射（key -> ShortcutTask）
         self.tasks: Dict[str, ShortcutTask] = {}
+        self.combo_tasks: Dict[str, ShortcutTask] = {}
+        self._pressed_keys: Set[str] = set()
 
         # 线程池
         self._pool = ThreadPoolExecutor(max_workers=4)
@@ -88,6 +90,52 @@ class ShortcutManager:
             task.pool = self._pool
             task.threshold = shortcut.get_threshold(Config.threshold)
             self.tasks[shortcut.key] = task
+            if shortcut.type == 'keyboard' and self._is_combo_key(shortcut.key):
+                self.combo_tasks[shortcut.key] = task
+
+    @staticmethod
+    def _is_combo_key(key_name: str) -> bool:
+        return '+' in key_name
+
+    @staticmethod
+    def _split_combo_key(key_name: str) -> Set[str]:
+        return {part.strip() for part in key_name.split('+') if part.strip()}
+
+    @staticmethod
+    def _generic_aliases(key_name: str) -> Set[str]:
+        aliases = {key_name}
+        if key_name in {'ctrl_l', 'ctrl_r'}:
+            aliases.add('ctrl')
+        elif key_name in {'shift_l', 'shift_r'}:
+            aliases.add('shift')
+        elif key_name in {'alt_l', 'alt_r', 'alt_gr'}:
+            aliases.add('alt')
+        elif key_name in {'cmd_l', 'cmd_r'}:
+            aliases.add('cmd')
+        return aliases
+
+    def _add_pressed_key(self, key_name: str) -> None:
+        self._pressed_keys.update(self._generic_aliases(key_name))
+
+    def _discard_pressed_key(self, key_name: str) -> None:
+        for alias in self._generic_aliases(key_name):
+            self._pressed_keys.discard(alias)
+
+    @classmethod
+    def _is_modifier_key(cls, key_name: str) -> bool:
+        return bool(cls._generic_aliases(key_name) & {'ctrl', 'shift', 'alt', 'cmd'})
+
+    def _find_combo_task(self, key_name: str, *, require_active: bool = False):
+        key_aliases = self._generic_aliases(key_name)
+        for combo_key, task in self.combo_tasks.items():
+            parts = self._split_combo_key(combo_key)
+            if not parts.intersection(key_aliases):
+                continue
+            if require_active and not task.is_recording:
+                continue
+            if parts.issubset(self._pressed_keys) or (require_active and task.is_recording):
+                return combo_key, task
+        return None, None
 
     # ========== 监听器创建 ==========
 
@@ -106,21 +154,34 @@ class ShortcutManager:
             if self._check_restoring(key_name, msg):
                 return True
 
-            # 查找匹配的快捷键
-            if key_name not in self.tasks:
-                return True
+            if msg in KEY_DOWN_MESSAGES:
+                self._add_pressed_key(key_name)
 
-            task = self.tasks[key_name]
+            # 查找匹配的单键或组合键
+            task = self.tasks.get(key_name)
+            event_key_name = key_name
+            # 组合键只由主键完成触发：先 Ctrl 后 L 是 Ctrl+L；先 L 后 Ctrl
+            # 仍视作普通输入，避免已经送入目标窗口的 L 又启动听写。
+            modifier_completing_combo = msg in KEY_DOWN_MESSAGES and self._is_modifier_key(key_name)
+            if task is None and not modifier_completing_combo:
+                combo_key, task = self._find_combo_task(key_name, require_active=msg in KEY_UP_MESSAGES)
+                event_key_name = combo_key or key_name
+            if task is None:
+                if msg in KEY_UP_MESSAGES:
+                    self._discard_pressed_key(key_name)
+                return True
 
             # 处理按键事件
             if msg in KEY_DOWN_MESSAGES:
-                self._event_handler.handle_keydown(key_name, task)
+                self._event_handler.handle_keydown(event_key_name, task)
             elif msg in KEY_UP_MESSAGES:
-                self._event_handler.handle_keyup(key_name, task)
+                self._event_handler.handle_keyup(event_key_name, task)
+                self._discard_pressed_key(key_name)
 
-            # 阻塞事件
+            # 阻塞事件（注意：修饰键的松开消息 KEY_UP 绝不阻塞，确保 OS 键盘状态机正常复位）
             if task.shortcut.suppress and self.keyboard_listener:
-                self.keyboard_listener.suppress_event()
+                if msg in KEY_DOWN_MESSAGES or data.vkCode not in (0xA2, 0xA3, 0xA0, 0xA1, 0x12, 0xA4, 0xA5, 0x11, 0x10, 0x14):
+                    self.keyboard_listener.suppress_event()
 
             return True
 
@@ -283,6 +344,13 @@ class ShortcutManager:
 
     def stop(self) -> None:
         """停止所有监听器和清理资源"""
+        # 强制解发修饰键释放，防止退出后留存 Alt/Ctrl 粘连
+        try:
+            from core.tools.key_reset import release_all_modifier_keys
+            release_all_modifier_keys()
+        except Exception:
+            pass
+
         if self.keyboard_listener:
             try:
                 self.keyboard_listener.stop()
@@ -305,7 +373,14 @@ class ShortcutManager:
         for task in self.tasks.values():
             if task.is_recording:
                 task.cancel()
+        self._pressed_keys.clear()
 
         # 关闭线程池
+        try:
+            from core.ui.modern_overlay.pill_overlay import close_pill_overlay
+            close_pill_overlay()
+        except Exception:
+            pass
+
         self._pool.shutdown(wait=False)
         logger.debug("快捷键管理器线程池已关闭")

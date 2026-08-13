@@ -77,9 +77,27 @@ class KeyMapper:
                 'delete': keyboard.Key.delete,
                 'backspace': keyboard.Key.backspace,
                 'shift': keyboard.Key.shift,
+                'shift_l': keyboard.Key.shift,
+                'shift_r': keyboard.Key.shift_r,
                 'ctrl': keyboard.Key.ctrl,
+                'ctrl_l': keyboard.Key.ctrl_l,
+                'ctrl_r': keyboard.Key.ctrl_r,
                 'alt': keyboard.Key.alt,
+                'alt_l': keyboard.Key.alt_l,
+                'alt_r': keyboard.Key.alt_r,
+                'alt_gr': keyboard.Key.alt_gr,
                 'cmd': keyboard.Key.cmd,
+                'cmd_l': keyboard.Key.cmd,
+                'cmd_r': keyboard.Key.cmd_r,
+                'up': keyboard.Key.up,
+                'down': keyboard.Key.down,
+                'left': keyboard.Key.left,
+                'right': keyboard.Key.right,
+                'home': keyboard.Key.home,
+                'end': keyboard.Key.end,
+                'page_up': keyboard.Key.page_up,
+                'page_down': keyboard.Key.page_down,
+                'insert': keyboard.Key.insert,
                 'f1': keyboard.Key.f1, 'f2': keyboard.Key.f2, 'f3': keyboard.Key.f3, 'f4': keyboard.Key.f4,
                 'f5': keyboard.Key.f5, 'f6': keyboard.Key.f6, 'f7': keyboard.Key.f7, 'f8': keyboard.Key.f8,
                 'f9': keyboard.Key.f9, 'f10': keyboard.Key.f10, 'f11': keyboard.Key.f11, 'f12': keyboard.Key.f12,
@@ -104,6 +122,13 @@ class KeyMapper:
         # 检查是否是小键盘按键
         if vk in NUMPAD_KEYS:
             return NUMPAD_KEYS[vk]
+
+        # 字母和数字必须按物理虚拟键码解析。若交给 KeyTranslator，
+        # Ctrl+L 之类的组合会被翻译成控制字符，导致组合键无法匹配。
+        if 0x41 <= vk <= 0x5A:
+            return chr(vk).lower()
+        if 0x30 <= vk <= 0x39:
+            return chr(vk)
 
         # 使用 pynput 的 KeyTranslator 获取字符（字母、数字、符号键）
         try:
@@ -131,6 +156,15 @@ class KeyMapper:
         special_keys = KeyMapper._get_special_key_objects()
         if key_name in special_keys:
             return special_keys[key_name]
+
+        # 小键盘按键
+        numpad_vk = {name: vk for vk, name in NUMPAD_KEYS.items()}
+        if key_name in numpad_vk:
+            return keyboard.KeyCode.from_vk(numpad_vk[key_name])
+
+        # 兜底虚拟键码格式
+        if key_name.startswith('vk_') and key_name[3:].isdigit():
+            return keyboard.KeyCode.from_vk(int(key_name[3:]))
 
         # 单个字符按键
         if len(key_name) == 1:

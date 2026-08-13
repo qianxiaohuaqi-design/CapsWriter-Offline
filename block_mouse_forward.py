@@ -122,10 +122,9 @@ class InputBlocker:
                 # 根据消息类型判断是按下还是松开
                 if msg == 0x0100:  # WM_KEYDOWN
                     print(f"🚫 已阻塞 Caps Lock 按键按下 #{self.capslock_blocked}")
+                    self.keyboard_listener.suppress_event()
                 elif msg == 0x0101:  # WM_KEYUP
                     print(f"🚫 已阻塞 Caps Lock 按键松开 #{self.capslock_blocked}")
-                # 调用 suppress_event() 阻止事件传递到系统
-                self.keyboard_listener.suppress_event()
                 return False
 
             return True

@@ -28,6 +28,8 @@ rapidfuzz
 pystray
 Pillow
 tkhtmlview
+nicegui
+pywebview
 
 # build
 pyinstaller

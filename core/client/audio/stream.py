@@ -54,6 +54,7 @@ class AudioStreamManager:
         self.app = app
         self._channels = 1
         self._running = False  # 标志是否应该运行
+        self._overlay_level_updater = None
 
     @property
     def state(self) -> ClientState:
@@ -77,6 +78,7 @@ class AudioStreamManager:
             return
 
         import asyncio
+        self._update_overlay_level(indata)
 
         # 将数据放入队列
         if self.app.loop and self.state.queue_in:
@@ -88,6 +90,22 @@ class AudioStreamManager:
                 }),
                 self.app.loop
             )
+
+    def _update_overlay_level(self, indata: np.ndarray) -> None:
+        """把当前音量推给录音浮层，失败时不影响录音链路。"""
+        try:
+            if self._overlay_level_updater is False:
+                return
+            if self._overlay_level_updater is None:
+                from core.ui.modern_overlay.pill_overlay import set_audio_level
+                self._overlay_level_updater = set_audio_level
+            mono = np.mean(indata, axis=1) if indata.ndim > 1 else indata
+            rms = float(np.sqrt(np.mean(np.square(mono))))
+            # 常见麦克风 RMS 很小，做一个柔和压缩映射。
+            level = min(1.0, max(0.0, rms * 18.0))
+            self._overlay_level_updater(level)
+        except Exception:
+            self._overlay_level_updater = False
 
     def _on_stream_finished(self) -> None:
         """音频流结束回调"""

@@ -1,132 +1,117 @@
-# CapsWriter-Offline
+# CapsWriter-Offline GUI 增强版
 
-![demo](assets/demo.png)
+![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)
+![Platform: Windows](https://img.shields.io/badge/Platform-Windows-blue.svg)
+![Python: 3.11](https://img.shields.io/badge/Python-3.11-yellow.svg)
 
-> **按住 CapsLock 说话，松开就上屏。就这么简单。**
+CapsWriter-Offline GUI 增强版是一个 Windows 离线语音输入工具。它可以在本地完成语音识别，把听写结果输入到当前光标位置，并提供桌面控制中心来管理快捷键、模型、热词、历史记录、音视频转写、AI 角色、备份和诊断。
 
-**CapsWriter-Offline** 是一个专为 Windows 打造的**完全离线**语音输入工具。
+![CapsWriter 控制中心](例图/屏幕截图%202026-08-13%20135513.png)
 
-## ✨ 核心特性
+## 项目功能
 
--   **语音输入**：按住 `CapsLock键` 或 `鼠标侧键X2` 说话，松开即输入，超低延迟，默认去除末尾逗句号。支持对讲机模式和单击录音模式。
--   **文件转录**：音视频文件往客户端 exe 一丢，字幕 (`.srt`)、文本 (`.txt`)、时间戳 (`.json`) 统统都有。
--   **数字 ITN**：自动将「十五六个」转为「15~16个」，支持各种复杂数字格式。
--   **热词替换**：在 `hot.txt` 记下偏僻词，通过音素模糊匹配，相似度大于阈值则强制替换。
--   **正则替换**：在 `hot-rule.txt` 用正则或简单等号规则，精准强制替换。
--   **LLM 角色**：预置了润色、小助理等角色，当识别结果的开头匹配任一角色名字时，将交由该角色处理。
--   **托盘菜单**：右键托盘图标即可添加热词、复制结果、清除LLM记忆。
--   **C/S 架构**：服务端与客户端分离，虽然 Win7 老电脑跑不了服务端模型，但最少能用客户端输入。
--   **日记归档**：按日期保存你的每一句语音及其识别结果。
--   **录音保存**：所有语音均保存为本地音频文件，隐私安全，永不丢失。
+- 离线语音输入：本地加载 ASR 模型，按住快捷键说话，松开后将识别结果写入当前应用。
+- 桌面控制中心：通过原生窗口管理快捷键、识别模型、输出方式、热词、AI 配置和运行状态。
+- 快捷键与对讲模式：支持自定义听写快捷键，并可切换长按说话或单击开始/结束录音。
+- 听写状态浮层：按住说话时在屏幕底部显示录音状态和音量反馈，帮助确认麦克风正在工作。
+- 两种输出方式：支持直接写入光标位置，也支持先显示可编辑确认框，再由用户确认后写入。
+- 输入历史：保存最近听写结果，支持搜索、复制、查看全文和清空。
+- 本地数据管理：集中查看听写日记、录音文件、转写输出和日志，方便排查和清理。
+- 热词与替换规则：在控制中心里维护 `hot.txt` 和 `hot-rule.txt`，修正常用词、项目名、标点和固定格式。
+- 语音识别与硬件：选择本地 ASR 模型、识别语言、格式化选项、后端和硬件加速策略。
+- 字幕转写：选择音频或视频文件，生成 `TXT`、`JSON`、`SRT` 和合并文本。
+- AI 润色与角色：可选配置 OpenAI 兼容 API 档案，用于润色、翻译、小助理、大助理和自定义角色。
+- 服务与诊断：查看服务端、客户端、GUI、托盘和模型状态，支持重启组件和完全退出。
+- 配置备份与迁移：导出/导入常用设置，默认不导出私有 API Key。
 
-**CapsWriter-Offline** 的精髓在于：**完全离线**（不受网络限制）、**响应极快**、**高准确率** 且 **高度自定义**。我追求的是一种「如臂使指」的流畅感，让它成为一个专属的一体化输入利器。无需安装，一个U盘就能带走，随插随用，保密电脑也能用。
+## 安装与运行
 
-以下为支持的模型：
+### 下载发布包
 
-| 引擎名 | 准确性 | 速度 | 格式 | 显卡加速 |
-|------|-------|------|------|---------|
-| Paraformer | ★★★☆☆ | ★★★★★ | ONNX | ❌ |
-| SenseVoice-Small | ★★★☆☆ | ★★★★★ | ONNX | ✅ |
-| Fun-ASR-Nano | ★★★★☆ | ★★★★☆ | ONNX + GGUF | ✅ |
-| Qwen3-ASR | ★★★★★ | ★★★☆☆ | ONNX + GGUF | ✅ |
+如果只是日常使用，推荐从 GitHub Releases 下载打包好的发布包：
 
+- `CapsWriter-Full.zip`：完整版，内置本地 ASR 模型，下载后解压即可运行，体积较大。
+- `CapsWriter-Lite.zip`：精简版，不内置 ASR 模型，体积较小；首次使用前需要按包内说明下载模型并放入 `models/` 目录。
 
-性能参考（20s 音频转录延迟）：
+解压后运行包内的 `CapsWriter.exe`。
 
-| 模型 | CPU U9-285H | GPU RTX5050 |
-|------|------------|------------|
-| Paraformer | 0.6s | - |
-| SenseVoice-Small | 0.6s | 0.15s |
-| Fun-ASR-Nano | 2.0s | 0.5s |
-| Qwen3-ASR-1.7B | 4.0s | 1.0s |
+### 环境要求
 
-详细功能说明请参考 [`docs/`](docs/) 目录：
-- [环境依赖安装说明](docs/环境依赖安装说明.md) — VC++ 运行库、FFmpeg 安装
-- [热词功能如何使用](docs/热词功能如何使用.md) — 热词替换、规则替换、自定义短语
-- [角色功能如何使用](docs/角色功能如何使用.md) — LLM 角色配置、输出模式、创建新角色
-- [识别语言如何配置](docs/识别语言如何配置.md) — 各引擎语言支持范围与配置方法
-- [文件转录功能如何使用](docs/文件转录功能如何使用.md) — 拖拽转字幕、时间戳对齐
-- [显卡加速的若干问题](docs/显卡加速的若干问题.md) — DirectML、Vulkan 加速配置
-- [模型下载的若干问题](docs/模型下载的若干问题.md) — 引擎选择、模型下载、目录结构
-- [常见问题](docs/常见问题.md) — FAQ
-- [更新日志](docs/CHANGELOG.md) 
+如果要从源码运行，需要准备：
 
+- Windows
+- Python 3.11
+- 本地 ASR 模型文件
 
-## 💻 平台支持
+### 安装 Python 依赖
 
-目前**仅能保证在 Windows 10/11 (64位) 下完美运行**。
+```powershell
+pip install -r requirements-client.txt
+pip install -r requirements-server.txt
+```
 
-- **Linux**：暂无环境进行测试和打包，无法保证兼容性。
-- **MacOS**：由于底层的 `keyboard` 库已放弃支持 MacOS，且系统限制极多，暂时无法支持。
+这一步只安装 Python 依赖。语音识别还需要准备本地模型文件。
 
-[LazyTyper](https://lazytyper.com/) 和 [闪电说](https://shandianshuo.cn/) 也是很优秀的作品，都有离线引擎，都支持 Windows Linux 与 MacOS，并都有漂亮的图形化页面，推荐使用。
+### 准备模型
 
-CapsWriter 的特别之处在于追求：
+将模型文件放入 `models/` 下对应目录。各模型目录内保留了下载链接说明。
 
-- 无感输入
-- 完全离线，不受网络约束
-- 低延迟，尽量做到硬件极限的最快速度
-- 高度自定义的热词系统
+### 启动
 
+```powershell
+python run_app.py
+```
 
-## 🎬 快速开始
+Windows 下也可以双击：
 
-1.  **准备环境**：确保安装了 [VC++ 运行库](https://learn.microsoft.com/zh-cn/cpp/windows/latest-supported-vc-redist)。若要使用文件转录功能，还需安装 [ffmpeg](https://ffmpeg.org/download.html) 并确保其在系统 PATH 中。
-2.  **下载解压**：下载 [Latest Release](https://github.com/HaujetZhao/CapsWriter-Offline/releases/latest) 里的软件本体，再到 [Models Release](https://github.com/HaujetZhao/CapsWriter-Offline/releases/tag/models) 下载模型压缩包，将模型解压，放入 `models` 文件夹中对应模型的文件夹里。
-3.  **启动服务**：双击 `start_server.exe`，**它会自动最小化到托盘菜单**。
-4.  **启动听写**：双击 `start_client.exe`，**它会自动最小化到托盘菜单**。
-5.  **开始录音**：按住 `CapsLock键` 或 `鼠标侧键X2` 就可以说话了！
+```text
+启动 CapsWriter 智能控制中心.bat
+```
 
+启动后会同时管理 ASR 服务端、听写客户端、控制中心 GUI 和托盘菜单。
 
-## ⚙️ 个性化配置
+## 基本使用
 
-所有的设置都在根目录的 `config_server.py` 和 `config_client.py` 里，可直接编辑。
+1. 打开 CapsWriter 控制中心。
+2. 在“通用与交互”里设置听写快捷键。
+3. 按住快捷键说话。
+4. 松开快捷键后，识别结果会写入当前光标位置。
 
+常用快捷键包括 `Caps Lock`、鼠标侧键 `X2`、`F8`、`F9`、`Ctrl + Space` 和 `Ctrl + Alt + Space`。
 
-## 🛠️ 常见问题
+如果启用“确认后写入”，识别完成后会先显示可编辑确认框，并把文本复制到剪贴板。
 
+## 文档
 
-**Q: 为什么按了没反应？**  
-A: 请确认 `start_client.exe` 的黑窗口还在运行。若想在管理员权限运行的程序中输入，也需以管理员权限运行客户端。
+- [控制中心使用说明](docs/控制中心说明.md)
+- [常见问题](docs/常见问题.md)
+- [热词功能如何使用](docs/热词功能如何使用.md)
+- [文件转录功能如何使用](docs/文件转录功能如何使用.md)
+- [显卡加速的若干问题](docs/显卡加速的若干问题.md)
+- [模型下载的若干问题](docs/模型下载的若干问题.md)
 
-**Q: 为什么识别结果没字？**  
-A: 到 `年/月/assets` 文件夹中检查录音文件，看是不是没有录到音；听听录音效果，是不是麦克风太差，建议使用桌面 USB 麦克风；检查麦克风权限。
+控制中心右上角的问号按钮也可以打开 README 和 `docs/` 文档目录。
 
-**Q: 想要隐藏黑窗口？**  
-A: 点击托盘菜单即可隐藏黑窗口。
+## 本地数据与隐私
 
-**Q: 如何开机启动？**  
-A: `Win+R` 输入 `shell:startup` 打开启动文件夹，将服务端、客户端的快捷方式放进去即可。
+普通语音识别在本地完成。以下文件可能包含用户内容或本机配置，不应提交到公开仓库：
 
-更多问题请参阅 [docs/常见问题.md](docs/常见问题.md)。
+- 输入历史：`web_gui/input_history.jsonl`
+- 私有 API Key：`web_gui/private_config.json`
+- GUI 设置：`web_gui/gui_settings.json`
+- AI 档案设置：`web_gui/llm_profiles.json`
+- 听写日记：按日期生成的 `YYYY/MM/DD.md`
+- 录音文件：按日期生成的 `assets/` 目录
+- 转写输出：`web_gui/outputs/`
+- 日志：`logs/`
+- 配置备份：`web_gui/config_backups/`
 
+这些运行时文件已在 `.gitignore` 中排除。配置导出默认不包含 API Key。
 
-## 🚀 我的其他优质项目推荐
+## 与原项目的关系
 
-| 项目名称 | 说明 | 体验地址 |
-| :--- | :--- | :--- |
-| [**IME_Indicator**](https://github.com/HaujetZhao/IME_Indicator) | Windows 输入法中英状态指示器 | [下载即用](https://github.com/HaujetZhao/IME_Indicator/releases/latest/download/IME-Indicator.exe) |
-| [**Rust-Tray**](https://github.com/HaujetZhao/Rust-Tray) | 将控制台最小化到托盘图标的工具 | [下载即用](https://github.com/HaujetZhao/Rust-Tray/releases/latest/download/Tray.exe) |
-| [**Gallery-Viewer**](https://github.com/HaujetZhao/Gallery-Viewer-HTML) | 网页端图库查看器，纯 HTML 实现 | [点击即用](https://haujetzhao.github.io/Gallery-Viewer-HTML/) |
-| [**全景图片查看器**](https://github.com/HaujetZhao/Panorama-Viewer-HTML) | 单个网页实现全景照片、视频查看 | [点击即用](https://haujetzhao.github.io/Panorama-Viewer-HTML/) |
-| [**图标生成器**](https://github.com/HaujetZhao/Font-Awesome-Icon-Generator-HTML) | 使用 Font-Awesome 生成网站 Icon | [点击即用](https://haujetzhao.github.io/Font-Awesome-Icon-Generator-HTML/) |
-| [**五笔编码反查**](https://github.com/HaujetZhao/wubi86-revert-query) | 86 五笔编码在线反查 | [点击即用](https://haujetzhao.github.io/wubi86-revert-query/) |
-| [**快捷键映射图**](https://github.com/HaujetZhao/ShortcutMapper_Chinese) | 可视化、交互式的快捷键映射图 (中文版) | [点击即用](https://haujetzhao.github.io/ShortcutMapper_Chinese/) |
+本项目是 CapsWriter-Offline 的 GUI 增强分支。原项目提供离线 ASR、快捷键听写、热词处理和客户端/服务端基础流程；本分支重点补充桌面可视化管理和面向日常使用的辅助功能。
 
+## License
 
-## ❤️ 致谢
-
-本项目基于以下优秀的开源项目：
-
--   [Sherpa-ONNX](https://github.com/k2-fsa/sherpa-onnx)
--   [FunASR](https://github.com/alibaba-damo-academy/FunASR)
-
-感谢 Google Antigravity、Anthropic Claude、GLM、DeepSeek，如果不是这些编程助手，许多功能（例如基于音素的热词检索算法）我是无力实现的。
-
-特别感谢那些慷慨解囊的捐助者，你们的捐助让我用在了购买这些优质的 AI 编程助手服务，并最终将这些成果反馈到了软件的更新里。
-
-
-如果觉得好用，欢迎点个 Star 或者打赏支持：
-
-
-![sponsor](assets/sponsor.jpg)	
+本项目继承原项目 MIT License。发布修改版时请保留原版权声明和许可证文件。

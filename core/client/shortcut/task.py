@@ -57,6 +57,7 @@ class ShortcutTask:
 
         # 录音状态动画
         self._status = Status('开始录音', spinner='point')
+        self._pill_overlay = None
 
     @property
     def state(self) -> ClientState:
@@ -89,6 +90,7 @@ class ShortcutTask:
 
         # 打印动画：正在录音
         self._status.start()
+        self._show_pill()
 
         # 启动识别任务
         recorder = self._get_recorder()
@@ -104,6 +106,7 @@ class ShortcutTask:
         self.is_recording = False
         self.state.stop_recording()
         self._status.stop()
+        self._hide_pill()
 
         self.task.cancel()
         self.task = None
@@ -115,6 +118,7 @@ class ShortcutTask:
         self.is_recording = False
         self.state.stop_recording()
         self._status.stop()
+        self._show_pill_processing()
 
         asyncio.run_coroutine_threadsafe(
             self.state.queue_in.put({
@@ -140,3 +144,42 @@ class ShortcutTask:
             manager.schedule_restore(self.shortcut.key)
         else:
             logger.warning(f"[{self.shortcut.key}] manager 引用丢失，无法 restore")
+
+    def _get_pill_overlay(self):
+        """懒加载现代录音胶囊，失败时不影响核心听写链路。"""
+        if self._pill_overlay is not None:
+            return self._pill_overlay
+        try:
+            from core.ui.modern_overlay.pill_overlay import get_pill_overlay
+            self._pill_overlay = get_pill_overlay()
+        except Exception as e:
+            logger.debug(f"灵动胶囊初始化失败，已跳过: {e}")
+            self._pill_overlay = False
+        return self._pill_overlay
+
+    def _show_pill(self) -> None:
+        overlay = self._get_pill_overlay()
+        if not overlay:
+            return
+        try:
+            overlay.show_recording()
+        except Exception as e:
+            logger.debug(f"显示灵动胶囊失败，已跳过: {e}")
+
+    def _show_pill_processing(self) -> None:
+        overlay = self._get_pill_overlay()
+        if not overlay:
+            return
+        try:
+            overlay.show_processing("正在整理文字...")
+        except Exception as e:
+            logger.debug(f"更新灵动胶囊状态失败，已跳过: {e}")
+
+    def _hide_pill(self) -> None:
+        overlay = self._get_pill_overlay()
+        if not overlay:
+            return
+        try:
+            overlay.hide()
+        except Exception as e:
+            logger.debug(f"隐藏灵动胶囊失败，已跳过: {e}")

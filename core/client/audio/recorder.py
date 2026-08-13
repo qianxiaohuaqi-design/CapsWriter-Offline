@@ -23,6 +23,7 @@ from core.client.connection import WebSocketManager
 from core.protocol import AudioMessage
 from . import logger
 
+
 if TYPE_CHECKING:
     from core.client.state import ClientState
     from core.client.app import CapsWriterClient
@@ -63,7 +64,7 @@ class AudioRecorder:
     def _ws_manager(self) -> WebSocketManager:
         """快捷访问桥接到 app.ws"""
         return self.app.ws
-    
+
     async def _send_message(self, message: AudioMessage) -> None:
         """发送消息到服务端"""
         if not self._ws_manager.is_connected:
@@ -202,6 +203,8 @@ class AudioRecorder:
                     
         except Exception as e:
             logger.error(f"录音任务错误: {e}", exc_info=True)
+        finally:
+            self.state.stop_recording()
     
     def get_file_manager(self) -> Optional[AudioFileManager]:
         """获取当前的文件管理器"""

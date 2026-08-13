@@ -82,7 +82,7 @@ class FileTranscriber:
         
         return True
     
-    async def send(self) -> None:
+    async def send(self, progress_callback=None) -> None:
         """发送音频数据到服务端 (异步流式处理)"""
         
         self.task_id = str(uuid.uuid1())
@@ -99,6 +99,8 @@ class FileTranscriber:
         # 2. 启动 FFmpeg 进程
         ffmpeg_cmd = MediaTool.build_ffmpeg_cmd(self.file)
         
+        progress = 0.0
+        process = None
         try:
             process = await asyncio.create_subprocess_exec(
                 *ffmpeg_cmd,
@@ -122,6 +124,8 @@ class FileTranscriber:
                 else:
                     prog_str = f'    发送进度：{progress:.2f}s'
                 console.print(prog_str, end='\r')
+                if progress_callback:
+                    progress_callback(progress, self._audio_duration)
 
                 message = AudioMessage(
                     task_id=self.task_id,
@@ -157,16 +161,29 @@ class FileTranscriber:
                 self._audio_duration = progress 
                 console.print(f'    音频长度：{self._audio_duration:.2f}s')
 
+            if bytes_sent == 0:
+                logger.warning(f"FFmpeg 未从文件中提取到音频数据: {self.file}")
+
             logger.debug("音频数据发送完成")
+
+        except asyncio.CancelledError:
+            logger.info(f"文件转录发送任务已取消: {self.file}")
+            if process and process.returncode is None:
+                process.terminate()
+                try:
+                    await asyncio.wait_for(process.wait(), timeout=2)
+                except Exception:
+                    process.kill()
+            raise
             
         except ConnectionError as e:
             logger.error(f"发送数据失败: {e}, 文件: {self.file}")
-            if 'process' in locals() and process.returncode is None:
+            if process and process.returncode is None:
                 process.terminate()
             return
         except Exception as e:
             logger.error(f"转录发送异常: {e}", exc_info=True)
-            if 'process' in locals() and process.returncode is None:
+            if process and process.returncode is None:
                 process.terminate()
             return
     

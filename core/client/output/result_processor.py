@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import asyncio
 import time
+import ast
+from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
 from config_client import ClientConfig as Config
@@ -24,6 +26,27 @@ from core.client.udp.udp_broadcaster import broadcast_output_udp
 from core.tools.zhconv import convert as zhconv_convert
 from core.client.audio.file_manager import AudioFileManager
 from core.client.llm.llm_write_md import write_llm_md
+from core.client.output.input_history import append_input_history
+
+CONFIG_CLIENT_PATH = Path(__file__).resolve().parents[3] / 'config_client.py'
+
+
+def get_live_client_config(var_name: str, default):
+    """Read lightweight user preferences without restarting the client."""
+    try:
+        tree = ast.parse(CONFIG_CLIENT_PATH.read_text(encoding='utf-8'))
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, (ast.Assign, ast.AnnAssign))
+                and any(
+                    isinstance(target, ast.Name) and target.id == var_name
+                    for target in (node.targets if isinstance(node, ast.Assign) else [node.target])
+                )
+            ):
+                return ast.literal_eval(node.value)
+    except Exception:
+        pass
+    return default
 
 if TYPE_CHECKING:
     from core.client.state import ClientState
@@ -155,6 +178,23 @@ class ResultProcessor:
                 
         except Exception as e:
             logger.debug(f"检测按键状态失败: {e}")
+
+    def _update_pill_overlay(self, text: str, final: bool = False) -> None:
+        """把识别字幕推送到底部浮层；失败时不影响文本输出。"""
+        try:
+            from core.ui.modern_overlay.pill_overlay import get_pill_overlay
+            get_pill_overlay().update_text(text, final=final)
+        except Exception as e:
+            logger.debug(f"更新底部字幕浮层失败，已跳过: {e}")
+
+    def _show_overlay_preview(self, text: str) -> bool:
+        """把最终结果推送到新版字幕浮层预览；失败时不影响主流程。"""
+        try:
+            from core.client.llm.llm_output_overlay import show_overlay_preview
+            return show_overlay_preview(text)
+        except Exception as e:
+            logger.debug(f"显示新版浮层预览失败，已跳过: {e}")
+            return False
     
     async def start(self) -> None:
         """开启工作循环（含自动重联）"""
@@ -196,6 +236,7 @@ class ResultProcessor:
                 f"接收到识别结果，文本: {text[:50]}{'...' if len(text) > 50 else ''}, "
                 f"时延: {delay:.2f}s"
             )
+            self._update_pill_overlay(text, final=False)
 
         # 如果非最终结果，继续等待
         if not message.is_final:
@@ -221,8 +262,12 @@ class ResultProcessor:
         text = self.hotword.get_rule_corrector().substitute(text)
         hotword_elapsed = time.monotonic() - hotword_start
 
+        output_destination = get_live_client_config('output_destination', getattr(Config, 'output_destination', 'typing'))
+
         # 保存最近一次识别结果
         self.state.last_recognition_text = text
+        if output_destination != 'overlay_preview':
+            self._update_pill_overlay(text, final=True)
 
         # 控制台输出：时延 + 热词时延合并到一行
         hotword_label = f'  热词时延: {hotword_elapsed:.2f}s' if Config.hot else ''
@@ -270,20 +315,42 @@ class ResultProcessor:
 
         # LLM 处理和输出
         llm_result = None
+        final_output_text = text
+        history_role = None
+        history_processed = False
         if Config.llm_enabled:
             llm_result = await self.app.llm.process_and_output(
                 text,
                 paste=paste,
                 matched_hotwords=potential_hotwords  # 传递上下文热词给 LLM
             )
+            if llm_result:
+                final_output_text = llm_result.result or text
+                history_role = llm_result.role_name
+                history_processed = bool(llm_result.processed)
         else:
-            await self.output.output(text, paste=paste)
+            if output_destination == 'overlay_preview':
+                if not self._show_overlay_preview(text):
+                    await self.output.output(text, paste=paste)
+            else:
+                await self.output.output(text, paste=paste)
             self.state.set_output_text(text)
             broadcast_output_udp(text)
 
+        append_input_history(
+            final_output_text,
+            original_text=original_text_stripped,
+            source_text=text,
+            role_name=history_role,
+            processed=history_processed,
+            paste=paste,
+            process_name=process_name,
+            time_start=message.time_start,
+        )
+
         # 保存录音与写入 md 文件
         file_audio = None
-        if Config.save_audio:
+        if get_live_client_config('save_audio', Config.save_audio):
             # 重命名音频文件
             file_path = self.state.pop_audio_file(message.task_id)
             if file_path:
@@ -291,19 +358,20 @@ class ResultProcessor:
                 file_manager.file_path = file_path
                 file_audio = file_manager.rename(text, message.time_start)
 
-            # 写入日记
+        if get_live_client_config('save_diary', getattr(Config, 'save_diary', False)):
             self.diary.write(text, message.time_start, file_audio)
 
         # LLM 结果显示和保存
         if Config.llm_enabled and llm_result and llm_result.processed:
             console.print(self._format_llm_result(llm_result))
-            write_llm_md(
-                llm_result.input_text,
-                llm_result.result,
-                llm_result.role_name,
-                message.time_start,
-                file_audio
-            )
+            if get_live_client_config('save_diary', getattr(Config, 'save_diary', False)):
+                write_llm_md(
+                    llm_result.input_text,
+                    llm_result.result,
+                    llm_result.role_name,
+                    message.time_start,
+                    file_audio
+                )
 
         # 检测修饰键状态（调试用）
         self._log_modifier_key_state()
