@@ -8,7 +8,7 @@
 
 CapsWriter-Offline GUI 增强版是一个 Windows 离线语音输入工具。它可以在本地完成语音识别，把听写结果输入到当前光标位置，并提供桌面控制中心来管理快捷键、模型、热词、历史记录、音视频转写、AI 角色、备份和诊断。
 
-![CapsWriter 控制中心](例图/屏幕截图%202026-08-13%20135513.png)
+![CapsWriter 控制中心](assets/ui/control-center-preview.png)
 
 ## 项目功能
 

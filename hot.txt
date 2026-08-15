@@ -14,8 +14,6 @@ SenseVoice-small
 Fun-ASR-Nano | 放 ASR Nano
 Qwen3-ASR | 千问ASR | 千问3ASR
 Qwen3-TTS | 千问TTS | 千问3TTS
-Claude | 克劳德 | 克劳得 | cloud ~~~ weather | sky
-Claude Code | cloud cold | cloud code
 ExampleProject | 示例项目
 config_client.py | config_client 点 py | config_client
 config_server.py | config_server 点 py | config_server
@@ -55,9 +53,6 @@ Bug | 拔格 | 八哥
 OK | ok | 欧克
 
 # ====== 常用开发与软件英文热词库 ======
-Cursor | 柯索 | 刻索
-ChatGPT | GPT | 聊天GPT
-Claude 3.5 | 克劳德3.5
 App | A P P
 Docker | 多克
 Git | 吉特 | 极特
@@ -88,44 +83,6 @@ Server | 搜服
 Client | 克莱恩特
 GUI | G U I
 Pull Request | PR
-cc-switch | ccswitch | cc switch | CC switch
-Skill | skill
-Skill.md | skill md | skill 点 md
-AGENTS.md | agents md | agents 点 md
-CLAUDE.md | claude md | claude 点 md
-Antigravity | anti gravity | Google Antigravity | 安提格拉维蒂 | Anti doroning | 安 Tgirl 物体 | 安 t guarantee tea
-Gemini CLI | gemini cli | Gemini C L I
-Claude Code | ClaudeCode | cloud code | cloud cold
-OpenAI
-GitHub Copilot | Copilot
-Windsurf | wind surf
-Cline | C line
-Roo Code | RooCode | roo code
-Continue.dev | Continue
-Aider | ai der
-Devin
-Kiro
-OpenCode | opencode | open code
-OpenClaw | openclaw | open claw
-Grok Build | grok build
-Hermes Agent | Hermes
-Muse Code | muse code
-Replit Agent | replit agent
-Trae
-Goose
-Zed
-Warp
-Bolt.new | bolt new | bolt 点 new
-v0 | v zero | v 零
-Lovable
-Tabnine
-Codeium
-CodeRabbit | code rabbit
-Subagent | sub agent
-Worktree | work tree
-MCP | M C P
-MCP Server | MCP 服务器 | MCP server
-Context7 | context seven | context 7
 
 # ====== 常用编程语言与操作系统 ======
 Python | 派森 | 拍森
@@ -188,15 +145,9 @@ TensorRT | 坦索RT
 DirectML | 直连ML
 Ollama | 欧拉玛
 DeepSeek | 深度求索 | 深度思考
-ChatGPT | GPT | 聊天GPT
 GPT-4 | GPT4
-Claude | 克劳德
-Gemini | 双子座
-Midjourney | MJ
-Stable Diffusion | SD
 
 # ====== 常用 IDE 与开发工具 ======
-Cursor | 柯索 | 刻索
 PyCharm | 派查姆
 IntelliJ | IDEA
 Visual Studio | VS

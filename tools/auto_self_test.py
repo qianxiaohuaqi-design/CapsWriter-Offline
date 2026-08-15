@@ -501,12 +501,9 @@ def test_unit_7_hotwords_and_rules(runner: TestRunner):
                 runner.log_pass("中文原意保留", "模型/界面/文件等中文词保持中文")
 
             expected_aliases = {
-                'cc switch': 'cc-switch',
-                'skill md': 'Skill.md',
-                'anti gravity': 'Antigravity',
-                'Anti doroning': 'Antigravity',
-                '安 Tgirl 物体': 'Antigravity',
-                '安 t guarantee tea': 'Antigravity',
+                'C plus plus': 'C++',
+                'config client 点 py': 'config_client.py',
+                'config server 点 py': 'config_server.py',
             }
             incorrect_aliases = {
                 sample: corrector.correct(sample).text
@@ -514,9 +511,9 @@ def test_unit_7_hotwords_and_rules(runner: TestRunner):
                 if corrector.correct(sample).text != expected
             }
             if incorrect_aliases:
-                runner.log_fail("开发热词纠正回归", f"未正确纠正: {incorrect_aliases}")
+                runner.log_fail("热词纠正回归", f"未正确纠正: {incorrect_aliases}")
             else:
-                runner.log_pass("开发热词纠正回归", f"{len(expected_aliases)} 个真实识别样本全部通过")
+                runner.log_pass("热词纠正回归", f"{len(expected_aliases)} 个真实识别样本全部通过")
 
             if loaded_count != len(corrector.hotwords):
                 runner.log_fail("热词加载一致性", f"报告加载 {loaded_count} 条，实际为 {len(corrector.hotwords)} 条")
