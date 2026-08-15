@@ -93,27 +93,3 @@ Windows 下也可以双击：
 - [模型下载的若干问题](docs/模型下载的若干问题.md)
 
 控制中心右上角的问号按钮也可以打开 README 和 `docs/` 文档目录。
-
-## 本地数据与隐私
-
-普通语音识别在本地完成。以下文件可能包含用户内容或本机配置，不应提交到公开仓库：
-
-- 输入历史：`web_gui/input_history.jsonl`
-- 私有 API Key：`web_gui/private_config.json`
-- GUI 设置：`web_gui/gui_settings.json`
-- AI 档案设置：`web_gui/llm_profiles.json`
-- 听写日记：按日期生成的 `YYYY/MM/DD.md`
-- 录音文件：按日期生成的 `assets/` 目录
-- 转写输出：`web_gui/outputs/`
-- 日志：`logs/`
-- 配置备份：`web_gui/config_backups/`
-
-这些运行时文件已在 `.gitignore` 中排除。配置导出默认不包含 API Key。
-
-## 与原项目的关系
-
-本项目是 CapsWriter-Offline 的 GUI 增强分支。原项目提供离线 ASR、快捷键听写、热词处理和客户端/服务端基础流程；本分支重点补充桌面可视化管理和面向日常使用的辅助功能。
-
-## License
-
-本项目继承原项目 MIT License。发布修改版时请保留原版权声明和许可证文件。
