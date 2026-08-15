@@ -2,5 +2,5 @@
 chcp 936 > nul
 title CapsWriter
 cd /d "%~dp0"
-start "" pythonw "%~dp0run_app.py"
+start "" wscript.exe "%~dp0启动 CapsWriter 智能控制中心.vbs"
 exit /b

@@ -539,6 +539,11 @@ class ConfigManager:
             'llm_enabled': ConfigManager.get_llm_enabled(),
             'llm_config': ConfigManager.get_llm_default_config(),
             'llm_profiles': ConfigManager.load_llm_profiles(include_keys=False),
+            'llm_role_output_destination': ConfigManager.get_client_var('llm_role_output_destination', 'overlay_preview'),
+            'llm_role_preview_close_mode': ConfigManager.get_client_var('llm_role_preview_close_mode', 'auto'),
+            'llm_role_preview_base_seconds': ConfigManager.get_client_var('llm_role_preview_base_seconds', 2),
+            'llm_role_preview_seconds_per_20_chars': ConfigManager.get_client_var('llm_role_preview_seconds_per_20_chars', 1),
+            'llm_role_preview_max_seconds': ConfigManager.get_client_var('llm_role_preview_max_seconds', 10),
 
             # 热词与正则
             'hot_enabled': ConfigManager.get_client_var('hot', True),
@@ -623,6 +628,15 @@ class ConfigManager:
         if 'output_destination' in configs:
             ConfigManager.set_client_var('output_destination', configs['output_destination'])
         for key in ('preview_close_mode', 'preview_base_seconds', 'preview_seconds_per_20_chars', 'preview_max_seconds'):
+            if key in configs:
+                ConfigManager.set_client_var(key, configs[key])
+        for key in (
+            'llm_role_output_destination',
+            'llm_role_preview_close_mode',
+            'llm_role_preview_base_seconds',
+            'llm_role_preview_seconds_per_20_chars',
+            'llm_role_preview_max_seconds',
+        ):
             if key in configs:
                 ConfigManager.set_client_var(key, configs[key])
         if 'save_audio' in configs:
@@ -884,6 +898,11 @@ class ConfigManager:
                 'temperature': ConfigManager._get_python_var(path, 'temperature', 0.7),
                 'top_p': ConfigManager._get_python_var(path, 'top_p', 0.9),
                 'max_tokens': ConfigManager._get_python_var(path, 'max_tokens', 4096),
+                'output_mode': ConfigManager._get_python_var(path, 'output_mode', 'inherit'),
+                'preview_close_mode': ConfigManager._get_python_var(path, 'preview_close_mode', ''),
+                'preview_base_seconds': ConfigManager._get_python_var(path, 'preview_base_seconds', 0),
+                'preview_seconds_per_20_chars': ConfigManager._get_python_var(path, 'preview_seconds_per_20_chars', 0),
+                'preview_max_seconds': ConfigManager._get_python_var(path, 'preview_max_seconds', 0),
                 'system_prompt': ConfigManager._get_python_var(path, 'system_prompt', ''),
             })
         return roles
@@ -901,7 +920,8 @@ class ConfigManager:
                 'name', 'enabled', 'profile_id', 'provider', 'api_url', 'model',
                 'enable_hotwords', 'enable_history', 'enable_read_selection', 'enable_thinking',
                 'max_context_length', 'selection_max_length', 'temperature', 'top_p',
-                'max_tokens', 'system_prompt',
+                'max_tokens', 'output_mode', 'preview_close_mode', 'preview_base_seconds',
+                'preview_seconds_per_20_chars', 'preview_max_seconds', 'system_prompt',
             }:
                 ConfigManager._set_python_var(role_path, key, value)
 
@@ -939,7 +959,11 @@ enable_history = True
 enable_read_selection = False
 selection_max_length = 1000
 
-output_mode = 'toast'
+output_mode = 'inherit'
+preview_close_mode = ''
+preview_base_seconds = 0
+preview_seconds_per_20_chars = 0
+preview_max_seconds = 0
 toast_initial_width = 0.5
 toast_initial_height = 0
 toast_font_family = '楷体'

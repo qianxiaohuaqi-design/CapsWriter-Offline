@@ -4,7 +4,7 @@
 
 # ==================== 基本信息 ====================
 name = '小助理'                   # 角色名称（留空表示默认）
-enabled = False                           # 是否启用此角色
+enabled = True                           # 是否启用此角色
 
 # ==================== API 配置 ====================
 provider = 'lmstudio'                   # API 提供商：'ollama', 'openai', 'deepseek', 'moonshot', 'zhipu', 'claude', 'gemini'
@@ -23,7 +23,11 @@ enable_read_selection = True            # 是否启用获取选中文字（通�
 selection_max_length = 1000             # 选中文字最大长度
 
 # ==================== 输出配置 ====================
-output_mode = 'toast'                   # 输出方式：'typing' 直接打字, 'toast' 浮动窗口
+output_mode = 'inherit'                 # 输出方式：跟随 AI 角色总浮层设置
+preview_close_mode = ''
+preview_base_seconds = 0
+preview_seconds_per_20_chars = 0
+preview_max_seconds = 0
 
 # ==================== Toast 弹窗配置（仅在 output_mode='toast' 时有效） ====================
 toast_initial_width = 0.5               # 窗口初始宽度（0.5 = 50% 屏幕宽度）

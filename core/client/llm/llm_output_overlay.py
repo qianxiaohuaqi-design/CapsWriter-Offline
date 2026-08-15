@@ -11,14 +11,14 @@ from core.client.llm.llm_output_typing import output_text
 from core.tools.asyncio_to_thread import to_thread
 
 
-def show_overlay_preview(text: str, *, final: bool = True) -> bool:
+def show_overlay_preview(text: str, *, final: bool = True, preview_config: dict | None = None) -> bool:
     if not text:
         return False
     try:
         from core.ui.modern_overlay.pill_overlay import get_pill_overlay, is_pill_enabled
         if not is_pill_enabled():
             return False
-        get_pill_overlay().show_preview(text, final=final)
+        get_pill_overlay().show_preview(text, final=final, preview_config=preview_config)
         return True
     except Exception:
         return False
@@ -39,12 +39,13 @@ async def handle_overlay_preview_mode(handler, text: str, role_config=None, matc
 
     handler.monitor.reset()
     chunks = []
+    preview_config = _role_preview_config(role_config)
 
     def stream_overlay_chunk(chunk: str):
         if not chunk:
             return
         chunks.append(chunk)
-        show_overlay_preview(''.join(chunks), final=False)
+        show_overlay_preview(''.join(chunks), final=False, preview_config=preview_config)
 
     try:
         polished_text, token_count, gen_time = await to_thread(
@@ -53,11 +54,32 @@ async def handle_overlay_preview_mode(handler, text: str, role_config=None, matc
     except Exception as e:
         result_text, _ = handle_llm_error(e, content, role_config.name if role_config else "LLM")
         result_text = TextOutput.strip_punc(result_text)
-        if not show_overlay_preview(result_text):
+        if not show_overlay_preview(result_text, preview_config=preview_config):
             await output_text(result_text, Config.paste)
         return (result_text, 0, 0.0)
 
     final_text = TextOutput.strip_punc(polished_text or ''.join(chunks) or content)
-    if not show_overlay_preview(final_text):
+    if not show_overlay_preview(final_text, preview_config=preview_config):
         await output_text(final_text, Config.paste)
     return (final_text, token_count, gen_time)
+
+
+def _role_preview_config(role_config) -> dict:
+    def role_value(name, default):
+        value = getattr(role_config, name, None)
+        return default if value in (None, '', 0) else value
+
+    return {
+        'close_mode': role_value(
+            'preview_close_mode',
+            getattr(Config, 'llm_role_preview_close_mode', 'auto'),
+        ),
+        'base_seconds': role_value(
+            'preview_base_seconds',
+            getattr(Config, 'llm_role_preview_base_seconds', 2),
+        ),
+        'max_seconds': role_value(
+            'preview_max_seconds',
+            getattr(Config, 'llm_role_preview_max_seconds', 10),
+        ),
+    }

@@ -4,7 +4,7 @@
 
 # ==================== 基本信息 ====================
 name = ''                           # 角色名称（留空表示默认）
-enabled = False                    # 是否启用此角色（默认关闭，配置 API 后可在控制中心开启）
+enabled = True                    # 是否启用此角色（默认关闭，配置 API 后可在控制中心开启）
 
 # ==================== API 配置 ====================
 provider = 'deepseek'                   # API 提供商：'ollama', 'openai', 'deepseek', 'moonshot', 'zhipu', 'claude', 'gemini'

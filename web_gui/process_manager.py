@@ -303,7 +303,7 @@ def _launch(script_name: str, pid_file: Path) -> int | None:
         script = BASE_DIR / script_name
         if not script.exists():
             return None
-        command = [python_executable(prefer_console=True), str(script)]
+        command = [python_executable(prefer_console=False), str(script)]
 
     process = subprocess.Popen(
         command,
@@ -393,11 +393,22 @@ def stop_all(include_self: bool = False) -> dict[str, bool]:
     except Exception:
         pass
 
-    client_pid = read_alive_pid(CLIENT_PID_FILE, component_keyword('start_client.py'))
-    server_pid = find_listening_pid(6016) or read_alive_pid(SERVER_PID_FILE, component_keyword('start_server.py'))
+    client_pids = [
+        read_alive_pid(CLIENT_PID_FILE, component_keyword('start_client.py')),
+        *find_project_processes(('start_client.py', '--client'), include_self=include_self),
+    ]
+    server_pids = [
+        find_listening_pid(6016),
+        read_alive_pid(SERVER_PID_FILE, component_keyword('start_server.py')),
+        *find_project_processes(('start_server.py', '--server'), include_self=include_self),
+    ]
     gui_stopped = stop_gui(include_self=include_self)
-    client_stopped = stop_pid(client_pid) if client_pid else False
-    server_stopped = stop_pid(server_pid) if server_pid else False
+    client_stopped = False
+    for pid in dict.fromkeys(pid for pid in client_pids if pid):
+        client_stopped = stop_pid(pid, force_self=include_self) or client_stopped
+    server_stopped = False
+    for pid in dict.fromkeys(pid for pid in server_pids if pid):
+        server_stopped = stop_pid(pid, force_self=include_self) or server_stopped
     launcher_stopped = False
     for pid in find_project_processes(('run_app.py',), include_self=include_self):
         if pid != os.getpid() or include_self:

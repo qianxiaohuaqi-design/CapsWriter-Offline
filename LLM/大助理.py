@@ -19,7 +19,11 @@ enable_history = True
 enable_read_selection = True
 selection_max_length = 1000
 
-output_mode = 'toast'
+output_mode = 'inherit'
+preview_close_mode = ''
+preview_base_seconds = 0
+preview_seconds_per_20_chars = 0
+preview_max_seconds = 0
 toast_initial_width = 0.5
 toast_initial_height = 0
 toast_font_family = '楷体'

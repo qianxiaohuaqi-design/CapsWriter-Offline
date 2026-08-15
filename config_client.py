@@ -40,6 +40,11 @@ class ClientConfig:
     preview_base_seconds = 2
     preview_seconds_per_20_chars = 1
     preview_max_seconds = 10
+    llm_role_output_destination = 'overlay_preview'
+    llm_role_preview_close_mode = 'auto'
+    llm_role_preview_base_seconds = 4
+    llm_role_preview_seconds_per_20_chars = 1
+    llm_role_preview_max_seconds = 10
     restore_clip = True         # 模拟粘贴后是否恢复剪贴板
     paste_apps   = [
         'WeiXin.exe',
@@ -72,7 +77,7 @@ class ClientConfig:
     hot = False                 # 是否启用热词替换（统一 RAG 匹配）
     hot_thresh = 0.85           # RAG 替换热词阈值（高阈值，用于实际替换）
     hot_similar = 0.6           # RAG 相似热词阈值（低阈值，用于 LLM 上下文）
-    hot_rule = True             # 是否启用自定义规则替换（基于正则表达式）
+    hot_rule = False             # 是否启用自定义规则替换（基于正则表达式）
 
     llm_enabled = True          # 是否启用 LLM 润色功能，需要配置 LLM/ 目录下的角色文件
     llm_stop_key = 'esc'        # 中断 LLM 输出的快捷键

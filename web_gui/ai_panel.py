@@ -8,6 +8,16 @@ from nicegui import run, ui
 from web_gui.config_manager import ConfigManager
 from web_gui.private_config import mask_key
 
+ROLE_OUTPUT_OPTIONS = {
+    'typing': '直接写入光标位置',
+    'overlay_preview': '确认后写入',
+}
+
+PREVIEW_CLOSE_OPTIONS = {
+    'auto': '按文本长度自动关闭',
+    'manual': '手动关闭',
+}
+
 
 def _dedupe_models(models: list[str] | tuple[str, ...] | None, current: str | None = None) -> list[str]:
     values: list[str] = []
@@ -73,6 +83,12 @@ def _update_profile_models(profile_id: str, model: str) -> None:
                 profile['default_model'] = model
             ConfigManager.save_llm_profiles(data)
             return
+
+
+def _normalized_role_output_mode(value: str | None) -> str:
+    if value == 'toast':
+        return 'overlay_preview'
+    return value or 'inherit'
 
 
 def render_ai_panel() -> None:
@@ -291,6 +307,11 @@ def render_ai_panel() -> None:
         selected_profile_id = selected_profile['id'] if selected_profile else None
         selected_model = (role or {}).get('model') or ((selected_profile or {}).get('default_model', ''))
         model_options = _dedupe_models((selected_profile or {}).get('models'), selected_model)
+        role_output_mode = _normalized_role_output_mode((role or {}).get('output_mode'))
+        use_role_overlay_settings = role_output_mode != 'inherit'
+        section_close_mode = ConfigManager.get_client_var('llm_role_preview_close_mode', 'auto')
+        section_base_seconds = ConfigManager.get_client_var('llm_role_preview_base_seconds', 2)
+        section_max_seconds = ConfigManager.get_client_var('llm_role_preview_max_seconds', 10)
 
         with ui.dialog() as dialog:
             with ui.card().classes('w-[920px] max-w-[94vw] max-h-[90vh] p-0 overflow-hidden rounded-xl'):
@@ -331,6 +352,55 @@ def render_ai_panel() -> None:
                         selection_switch = ui.switch('读取选中文字', value=(role or {}).get('enable_read_selection', False)).props('color=amber-8')
                         thinking_switch = ui.switch('启用思考参数', value=(role or {}).get('enable_thinking', False)).props('color=amber-8')
 
+                    with ui.card().classes('w-full p-5 rounded-lg bg-slate-50 border border-slate-200 shadow-none gap-4'):
+                        with ui.row().classes('items-center justify-between w-full gap-4 flex-wrap'):
+                            with ui.column().classes('gap-1 min-w-0'):
+                                ui.label('浮层设置').classes('font-semibold text-slate-900')
+                                ui.label('关闭独立设置时，这个角色会跟随 AI 角色总浮层设置。').classes('text-xs text-slate-500')
+                            role_overlay_switch = ui.switch('使用独立浮层设置', value=use_role_overlay_settings).props('color=amber-8')
+
+                        inherited_overlay_note = ui.label('当前跟随 AI 角色总浮层设置。').classes('text-sm text-slate-500')
+                        with ui.column().classes('gap-4 w-full') as role_overlay_container:
+                            role_output_select = ui.select(
+                                ROLE_OUTPUT_OPTIONS,
+                                value=role_output_mode if role_output_mode in ROLE_OUTPUT_OPTIONS else 'typing',
+                                label='结果写入方式',
+                            ).classes('w-full')
+                            with ui.column().classes('gap-4 w-full') as role_preview_settings_container:
+                                role_close_select = ui.select(
+                                    PREVIEW_CLOSE_OPTIONS,
+                                    value=(role or {}).get('preview_close_mode') or section_close_mode,
+                                    label='确认浮层关闭方式',
+                                ).classes('w-full')
+                                with ui.grid(columns=2).classes('w-full gap-4') as role_timing_row:
+                                    role_base_seconds = ui.number(
+                                        '基础停留秒数',
+                                        value=(role or {}).get('preview_base_seconds') or section_base_seconds,
+                                        min=2,
+                                        max=60,
+                                        step=1,
+                                    ).classes('w-full')
+                                    role_max_seconds = ui.number(
+                                        '最长停留秒数',
+                                        value=(role or {}).get('preview_max_seconds') or section_max_seconds,
+                                        min=2,
+                                        max=120,
+                                        step=1,
+                                    ).classes('w-full')
+
+                        def sync_role_overlay_visibility() -> None:
+                            enabled = bool(role_overlay_switch.value)
+                            preview_enabled = role_output_select.value == 'overlay_preview'
+                            role_overlay_container.set_visibility(enabled)
+                            inherited_overlay_note.set_visibility(not enabled)
+                            role_preview_settings_container.set_visibility(enabled and preview_enabled)
+                            role_timing_row.set_visibility(enabled and preview_enabled and role_close_select.value == 'auto')
+
+                        role_overlay_switch.on_value_change(lambda _: sync_role_overlay_visibility())
+                        role_output_select.on_value_change(lambda _: sync_role_overlay_visibility())
+                        role_close_select.on_value_change(lambda _: sync_role_overlay_visibility())
+                        sync_role_overlay_visibility()
+
                     system_prompt = ui.textarea('角色提示词 / 人设', value=(role or {}).get('system_prompt', '')).classes('w-full min-h-56 bg-white font-mono')
 
                     def save_role() -> None:
@@ -347,6 +417,23 @@ def render_ai_panel() -> None:
                             )
                         else:
                             stem = role['stem']
+                        if role_overlay_switch.value:
+                            output_mode = role_output_select.value or 'overlay_preview'
+                            if output_mode == 'overlay_preview':
+                                preview_close_mode = role_close_select.value or section_close_mode
+                                preview_base_seconds = int(role_base_seconds.value or section_base_seconds)
+                                preview_max_seconds = int(role_max_seconds.value or section_max_seconds)
+                                if preview_max_seconds < preview_base_seconds:
+                                    preview_max_seconds = preview_base_seconds
+                            else:
+                                preview_close_mode = ''
+                                preview_base_seconds = 0
+                                preview_max_seconds = 0
+                        else:
+                            output_mode = 'inherit'
+                            preview_close_mode = ''
+                            preview_base_seconds = 0
+                            preview_max_seconds = 0
                         ConfigManager.set_llm_role_config(
                             stem,
                             name=name_in.value,
@@ -360,6 +447,11 @@ def render_ai_panel() -> None:
                             selection_max_length=int(selection_max.value or 1000),
                             temperature=float(temperature.value or 0.7),
                             max_tokens=int(max_tokens.value or 4096),
+                            output_mode=output_mode,
+                            preview_close_mode=preview_close_mode,
+                            preview_base_seconds=preview_base_seconds,
+                            preview_seconds_per_20_chars=1 if preview_base_seconds else 0,
+                            preview_max_seconds=preview_max_seconds,
                             system_prompt=system_prompt.value,
                         )
                         main_content.refresh()
@@ -439,7 +531,7 @@ def render_ai_panel() -> None:
                         ConfigManager.set_llm_enabled(bool(e.value))
                         ui.notify('AI 润色开关已保存，下一次听写生效。', type='positive')
 
-                    llm_switch.on('update:model-value', handle_enabled_change)
+                    llm_switch.on_value_change(handle_enabled_change)
 
                 if profiles:
                     with ui.grid(columns=2).classes('w-full gap-5'):
@@ -452,29 +544,100 @@ def render_ai_panel() -> None:
                             new_value_mode='add-unique',
                         ).classes('w-full')
 
+                    def save_default_binding() -> None:
+                        if not profile_select.value:
+                            return
+                        if model_select.value:
+                            _update_profile_models(profile_select.value, model_select.value)
+                        if not ConfigManager.apply_llm_profile_to_default(profile_select.value, model_select.value):
+                            ui.notify('API 配置不存在，请重新选择。', type='negative')
+
                     def update_default_models(e) -> None:
                         profile = ConfigManager.get_llm_profile(e.value)
                         models = _dedupe_models((profile or {}).get('models'), (profile or {}).get('default_model'))
                         _refresh_select_options(model_select, models, (profile or {}).get('default_model'))
+                        save_default_binding()
 
-                    profile_select.on('update:model-value', update_default_models)
-
-                    def save_default_binding() -> None:
-                        if not profile_select.value:
-                            ui.notify('请先选择 API 配置。', type='warning')
-                            return
-                        if model_select.value:
-                            _update_profile_models(profile_select.value, model_select.value)
-                        if ConfigManager.apply_llm_profile_to_default(profile_select.value, model_select.value):
-                            ui.notify('默认润色绑定已保存，下一次听写生效。', type='positive')
-                            main_content.refresh()
-                        else:
-                            ui.notify('API 配置不存在，请重新选择。', type='negative')
-
-                    ui.button('保存默认绑定', icon='save', on_click=save_default_binding).classes('bg-amber-600 text-white px-6 self-end')
+                    profile_select.on_value_change(update_default_models)
+                    model_select.on_value_change(lambda _: save_default_binding())
                 else:
                     with ui.card().classes('w-full p-5 rounded-lg bg-amber-50 border border-amber-200 shadow-none'):
                         ui.label('当前没有 API 配置。默认 AI 润色暂不可用，但离线语音转文字不受影响。').classes('text-sm text-amber-800')
+
+            with ui.card().classes('w-full p-6 rounded-xl bg-slate-50 border border-slate-200 shadow-none gap-5'):
+                with ui.row().classes('items-start justify-between w-full gap-4 flex-wrap'):
+                    with ui.column().classes('gap-1 min-w-0'):
+                        ui.label('AI 角色浮层设置').classes('text-lg font-bold text-slate-900')
+                        ui.label('未启用独立浮层设置的 AI 角色，会统一使用这里的写入方式和确认浮层停留方式。').classes('text-sm text-slate-500')
+
+                def sync_section_preview_visibility() -> None:
+                    enabled = role_output_destination_select.value == 'overlay_preview'
+                    auto_close = role_preview_close_select.value == 'auto'
+                    role_preview_settings_container.set_visibility(enabled)
+                    role_preview_timing_row.set_visibility(enabled and auto_close)
+
+                def save_role_output_destination(e) -> None:
+                    ConfigManager.set_client_var('llm_role_output_destination', e.value)
+                    sync_section_preview_visibility()
+                    ui.notify('AI 角色写入方式已保存，下一次角色调用生效。', type='positive')
+
+                def save_role_preview_close(e) -> None:
+                    ConfigManager.set_client_var('llm_role_preview_close_mode', e.value)
+                    sync_section_preview_visibility()
+                    ui.notify('AI 角色确认浮层关闭方式已保存，下一次角色调用生效。', type='positive')
+
+                with ui.row().classes('items-center justify-between w-full gap-4 flex-wrap'):
+                    with ui.column().classes('gap-0.5 min-w-0'):
+                        ui.label('结果写入方式').classes('font-semibold text-slate-900 text-base')
+                        ui.label('直接写入会把 AI 结果输入到光标位置；确认后写入会先显示可编辑浮层。').classes('text-xs text-slate-500')
+                    role_output_destination_select = ui.select(
+                        ROLE_OUTPUT_OPTIONS,
+                        value=ConfigManager.get_client_var('llm_role_output_destination', 'overlay_preview'),
+                        label='结果写入方式',
+                        on_change=save_role_output_destination,
+                    ).classes('w-56')
+
+                with ui.column().classes('gap-5 w-full') as role_preview_settings_container:
+                    with ui.row().classes('items-center justify-between w-full gap-4 flex-wrap'):
+                        with ui.column().classes('gap-0.5 min-w-0'):
+                            ui.label('确认浮层关闭方式').classes('font-semibold text-slate-900 text-base')
+                            ui.label('自动模式会按文本长度延长停留；点进文本框编辑后会暂停自动关闭。').classes('text-xs text-slate-500')
+                        role_preview_close_select = ui.select(
+                            PREVIEW_CLOSE_OPTIONS,
+                            value=ConfigManager.get_client_var('llm_role_preview_close_mode', 'auto'),
+                            label='确认浮层关闭方式',
+                            on_change=save_role_preview_close,
+                        ).classes('w-56')
+
+                    with ui.row().classes('items-end gap-4 w-full flex-wrap') as role_preview_timing_row:
+                        role_preview_base = ui.number(
+                            '基础停留秒数',
+                            value=ConfigManager.get_client_var('llm_role_preview_base_seconds', 2),
+                            min=2,
+                            max=60,
+                            step=1,
+                        ).classes('w-48')
+                        role_preview_max = ui.number(
+                            '最长停留秒数',
+                            value=ConfigManager.get_client_var('llm_role_preview_max_seconds', 10),
+                            min=2,
+                            max=120,
+                            step=1,
+                        ).classes('w-48')
+
+                        def save_role_preview_timing() -> None:
+                            base = int(role_preview_base.value or 2)
+                            max_seconds = int(role_preview_max.value or base)
+                            if max_seconds < base:
+                                max_seconds = base
+                            ConfigManager.set_client_var('llm_role_preview_base_seconds', base)
+                            ConfigManager.set_client_var('llm_role_preview_seconds_per_20_chars', 1)
+                            ConfigManager.set_client_var('llm_role_preview_max_seconds', max_seconds)
+                            ui.notify('AI 角色确认浮层停留时间已保存，下一次角色调用生效。', type='positive')
+
+                        ui.button('保存停留时间', icon='schedule', on_click=save_role_preview_timing).props('outline color=amber-8').classes('h-10 px-4 rounded-lg text-sm bg-white')
+
+                sync_section_preview_visibility()
 
             with ui.card().classes('w-full p-6 rounded-xl bg-slate-50 border border-slate-200 shadow-none gap-5'):
                 with ui.row().classes('items-center justify-between w-full gap-4 flex-wrap'):
@@ -508,6 +671,9 @@ def render_ai_panel() -> None:
                                         ui.badge('未绑定 API', color='amber-2').classes('text-amber-900 border border-amber-200')
                                 ui.label(f'触发词：{role.get("name") or role["stem"]}').classes('text-xs text-slate-500')
                                 ui.label(_profile_summary(bound_profile)).classes('text-xs text-slate-500')
+                                output_mode = _normalized_role_output_mode(role.get('output_mode'))
+                                output_text = '浮层：跟随总设置' if output_mode == 'inherit' else f'浮层：{ROLE_OUTPUT_OPTIONS.get(output_mode, "跟随总设置")}'
+                                ui.label(output_text).classes('text-xs text-slate-400')
                             with ui.row().classes('items-center gap-2'):
 
                                 def toggle_role(e, r=role):

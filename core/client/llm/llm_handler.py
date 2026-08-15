@@ -258,7 +258,15 @@ class LLMHandler:
 
 
         # 4. 根据输出模式分发处理
-        if get_live_client_config('output_destination', getattr(Config, 'output_destination', 'typing')) == 'overlay_preview' or role_config.output_mode == 'toast':
+        role_output_mode = getattr(role_config, 'output_mode', 'inherit') or 'inherit'
+        if role_output_mode == 'toast':
+            role_output_mode = 'overlay_preview'
+        if role_output_mode == 'inherit':
+            role_output_mode = get_live_client_config(
+                'llm_role_output_destination',
+                getattr(Config, 'llm_role_output_destination', 'overlay_preview'),
+            )
+        if role_output_mode == 'overlay_preview':
             result, token_count, gen_time = await handle_overlay_preview_mode(self, text, role_config, matched_hotwords, content)
         else: # typing
             result, token_count, gen_time = await handle_typing_mode(self, text, paste, matched_hotwords, role_config, content)

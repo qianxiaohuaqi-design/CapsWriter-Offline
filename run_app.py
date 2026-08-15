@@ -77,7 +77,7 @@ def _has_visible_control_window() -> bool:
             buffer = ctypes.create_unicode_buffer(length + 1)
             user32.GetWindowTextW(hwnd, buffer, length + 1)
             title = buffer.value
-            if 'CapsWriter' in title or '127.0.0.1:6017' in title:
+            if title == 'CapsWriter':
                 found = True
                 return False
             return True
@@ -101,11 +101,62 @@ def _open_control_center_browser() -> None:
         pass
 
 
+def _show_control_center_window() -> bool:
+    if sys.platform != 'win32' or not GUI_PROCESS:
+        return False
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        user32 = ctypes.windll.user32
+        target_pids = {GUI_PROCESS.pid}
+        try:
+            import psutil
+            target_pids.update(child.pid for child in psutil.Process(GUI_PROCESS.pid).children(recursive=True))
+        except Exception:
+            pass
+        found = False
+        EnumWindowsProc = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+
+        def callback(hwnd, lparam):
+            nonlocal found
+            process_id = wintypes.DWORD()
+            user32.GetWindowThreadProcessId(hwnd, ctypes.byref(process_id))
+            if process_id.value not in target_pids:
+                return True
+
+            title_length = user32.GetWindowTextLengthW(hwnd)
+            if title_length <= 0:
+                return True
+            title_buffer = ctypes.create_unicode_buffer(title_length + 1)
+            user32.GetWindowTextW(hwnd, title_buffer, title_length + 1)
+            if title_buffer.value != 'CapsWriter':
+                return True
+
+            user32.ShowWindow(hwnd, 9)  # SW_RESTORE
+            user32.BringWindowToTop(hwnd)
+            user32.SetForegroundWindow(hwnd)
+            found = True
+            return False
+
+        user32.EnumWindows(EnumWindowsProc(callback), 0)
+        return found
+    except Exception:
+        return False
+
+
 def _ensure_control_center_visible(delay: float = 2.5) -> None:
     def worker() -> None:
         time.sleep(delay)
-        if process_manager.is_port_open('127.0.0.1', 6017) and not _has_visible_control_window():
-            _open_control_center_browser()
+        for _ in range(60):
+            if process_manager.is_port_open('127.0.0.1', 6017):
+                for _ in range(20):
+                    if _show_control_center_window() or _has_visible_control_window():
+                        return
+                    time.sleep(0.25)
+                _open_control_center_browser()
+                return
+            time.sleep(0.25)
 
     threading.Thread(target=worker, daemon=True).start()
 

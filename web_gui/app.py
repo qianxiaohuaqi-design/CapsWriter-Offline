@@ -82,6 +82,7 @@ def _apply_native_window_icon():
     SWP_NOSIZE = 0x0001
     SWP_NOZORDER = 0x0004
     SWP_FRAMECHANGED = 0x0020
+    app_id = 'CapsWriter.Offline.App.v3'
 
     hicon_16 = user32.LoadImageW(None, str(ico_path), IMAGE_ICON, 16, 16, LR_LOADFROMFILE)
     hicon_24 = user32.LoadImageW(None, str(ico_path), IMAGE_ICON, 24, 24, LR_LOADFROMFILE)
@@ -97,6 +98,89 @@ def _apply_native_window_icon():
         small = hicon_24 if dpi >= 144 else (hicon_16 or hicon_24)
         big = hicon_48 if dpi >= 144 else (hicon_32 or hicon_48)
         return small or big, big or small
+
+    def _set_taskbar_identity(hwnd):
+        try:
+            import uuid
+
+            class PROPERTYKEY(ctypes.Structure):
+                _fields_ = [('fmtid', ctypes.c_ubyte * 16), ('pid', wintypes.DWORD)]
+
+            class GUID(ctypes.Structure):
+                _fields_ = [
+                    ('Data1', wintypes.DWORD),
+                    ('Data2', wintypes.WORD),
+                    ('Data3', wintypes.WORD),
+                    ('Data4', ctypes.c_ubyte * 8),
+                ]
+
+            class PROPVARIANT_UNION(ctypes.Union):
+                _fields_ = [('pwszVal', wintypes.LPWSTR)]
+
+            class PROPVARIANT(ctypes.Structure):
+                _fields_ = [
+                    ('vt', ctypes.c_ushort),
+                    ('wReserved1', ctypes.c_ushort),
+                    ('wReserved2', ctypes.c_ushort),
+                    ('wReserved3', ctypes.c_ushort),
+                    ('value', PROPVARIANT_UNION),
+                ]
+
+            def property_key(pid):
+                raw = uuid.UUID('{9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3}').bytes_le
+                key = PROPERTYKEY()
+                for index, byte in enumerate(raw):
+                    key.fmtid[index] = byte
+                key.pid = pid
+                return key
+
+            def guid(value):
+                source = uuid.UUID(value)
+                result = GUID()
+                data = source.bytes_le
+                result.Data1 = int.from_bytes(data[0:4], 'little')
+                result.Data2 = int.from_bytes(data[4:6], 'little')
+                result.Data3 = int.from_bytes(data[6:8], 'little')
+                for index, byte in enumerate(data[8:16]):
+                    result.Data4[index] = byte
+                return result
+
+            def propvariant(value):
+                variant = PROPVARIANT()
+                variant.vt = 31  # VT_LPWSTR
+                variant.value.pwszVal = value
+                return variant
+
+            iid = guid('{886D8EEB-8CF2-4446-8D02-CDBA1DBDCF99}')
+            store = ctypes.c_void_p()
+            ctypes.windll.shell32.SHGetPropertyStoreForWindow(
+                wintypes.HWND(hwnd),
+                ctypes.byref(iid),
+                ctypes.byref(store),
+            )
+            if not store:
+                return
+            vtable = ctypes.cast(store, ctypes.POINTER(ctypes.POINTER(ctypes.c_void_p))).contents
+            set_value = ctypes.WINFUNCTYPE(
+                ctypes.c_long,
+                ctypes.c_void_p,
+                ctypes.POINTER(PROPERTYKEY),
+                ctypes.POINTER(PROPVARIANT),
+            )(vtable[5])
+            commit = ctypes.WINFUNCTYPE(ctypes.c_long, ctypes.c_void_p)(vtable[6])
+            release = ctypes.WINFUNCTYPE(ctypes.c_ulong, ctypes.c_void_p)(vtable[2])
+
+            values = (
+                (property_key(5), propvariant(app_id)),
+                (property_key(3), propvariant(f'{ico_path},0')),
+                (property_key(4), propvariant('CapsWriter')),
+            )
+            for key, value in values:
+                set_value(store, ctypes.byref(key), ctypes.byref(value))
+            commit(store)
+            release(store)
+        except Exception:
+            pass
 
     pid = os.getpid()
 
@@ -128,6 +212,7 @@ def _apply_native_window_icon():
                 small_icon, big_icon = _dpi_icons(hwnd)
                 user32.SendMessageW(hwnd, WM_SETICON, ICON_SMALL, small_icon)
                 user32.SendMessageW(hwnd, WM_SETICON, ICON_BIG, big_icon)
+                _set_taskbar_identity(hwnd)
                 user32.SetWindowPos(hwnd, 0, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED)
                 found = True
         except Exception:
@@ -148,6 +233,7 @@ def _apply_native_window_icon():
                     small_icon, big_icon = _dpi_icons(hwnd)
                     user32.SendMessageW(hwnd, WM_SETICON, ICON_SMALL, small_icon)
                     user32.SendMessageW(hwnd, WM_SETICON, ICON_BIG, big_icon)
+                    _set_taskbar_identity(hwnd)
                     user32.SetWindowPos(hwnd, 0, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED)
                     found = True
                 return True
@@ -1131,7 +1217,7 @@ def main_page():
 
                             with ui.row().classes('items-center justify-between w-full'):
                                 with ui.column().classes('gap-0.5'):
-                                    ui.label('听写触发快捷键 (Hotkey)').classes('font-semibold text-slate-900 dark:text-slate-100 text-base')
+                                    ui.label('听写触发快捷键').classes('font-semibold text-slate-900 dark:text-slate-100 text-base')
                                     ui.label('长按此键讲话，松开即可自动将识别文字打字上屏。').classes('text-xs text-slate-500 dark:text-slate-400')
 
                                 with ui.row().classes('items-center gap-3'):
@@ -1157,7 +1243,7 @@ def main_page():
                         with ui.card().classes('bg-slate-50 dark:bg-slate-800/50 border border-slate-200/60 dark:border-slate-700/60 p-6 rounded-xl gap-5 w-full shadow-none'):
                             with ui.row().classes('items-center justify-between w-full'):
                                 with ui.column().classes('gap-0.5'):
-                                    ui.label('启用听写状态浮层 (Dictation Overlay)').classes('font-semibold text-slate-900 dark:text-slate-100 text-base')
+                                    ui.label('启用听写状态浮层').classes('font-semibold text-slate-900 dark:text-slate-100 text-base')
                                     ui.label('按住说话时在屏幕底部显示白底橙色声波反馈，帮助确认麦克风正在工作。').classes('text-xs text-slate-500 dark:text-slate-400')
 
                                 def handle_overlay_change(e):
@@ -1668,33 +1754,50 @@ def main_page():
                                 with ui.column().classes('gap-1'):
                                     ui.label('替换策略').classes('font-semibold text-slate-800 dark:text-slate-200 text-base')
                                     ui.label('控制 hot.txt 和 hot-rule.txt 是否参与每次听写后的文本修正。').classes('text-xs text-slate-500 dark:text-slate-400')
-                                hot_enabled_sw = ui.switch('启用热词替换', value=cfg.get('hot_enabled', True)).classes('text-slate-700 dark:text-slate-200')
-                                hot_rule_enabled_sw = ui.switch('启用正则替换', value=cfg.get('hot_rule_enabled', True)).classes('text-slate-700 dark:text-slate-200')
+                            ui.separator().classes('bg-slate-200/60 dark:bg-slate-700/60')
                             with ui.grid(columns=2).classes('w-full gap-4'):
-                                hot_thresh_in = ui.number(
-                                    label='热词替换阈值',
-                                    value=cfg.get('hot_thresh', 0.85),
-                                    min=0,
-                                    max=1,
-                                    step=0.01,
-                                ).classes('w-full')
-                                hot_similar_in = ui.number(
-                                    label='相似热词阈值',
-                                    value=cfg.get('hot_similar', 0.6),
-                                    min=0,
-                                    max=1,
-                                    step=0.01,
-                                ).classes('w-full')
+                                with ui.card().classes('w-full p-4 rounded-lg bg-white dark:bg-slate-900/40 border border-slate-200/70 dark:border-slate-700 shadow-none gap-3'):
+                                    with ui.row().classes('items-start justify-between gap-3 w-full'):
+                                        with ui.column().classes('gap-1 min-w-0'):
+                                            ui.label('热词替换设置').classes('font-semibold text-slate-800 dark:text-slate-200')
+                                            ui.label('对应 hot.txt，用音近匹配修正常见词、品牌名和固定短语。').classes('text-xs text-slate-500 dark:text-slate-400')
+                                        hot_enabled_sw = ui.switch('启用热词替换', value=cfg.get('hot_enabled', True)).classes('text-slate-700 dark:text-slate-200 shrink-0')
+                                    hot_thresh_in = ui.number(
+                                        label='热词替换阈值',
+                                        value=cfg.get('hot_thresh', 0.85),
+                                        min=0,
+                                        max=1,
+                                        step=0.01,
+                                    ).classes('w-full')
+                                    hot_similar_in = ui.number(
+                                        label='相似热词阈值',
+                                        value=cfg.get('hot_similar', 0.6),
+                                        min=0,
+                                        max=1,
+                                        step=0.01,
+                                    ).classes('w-full')
+                                with ui.card().classes('w-full p-4 rounded-lg bg-white dark:bg-slate-900/40 border border-slate-200/70 dark:border-slate-700 shadow-none gap-3'):
+                                    with ui.row().classes('items-start justify-between gap-3 w-full'):
+                                        with ui.column().classes('gap-1 min-w-0'):
+                                            ui.label('正则替换设置').classes('font-semibold text-slate-800 dark:text-slate-200')
+                                            ui.label('对应 hot-rule.txt，启用后按文件中的正则规则修正文稿。').classes('text-xs text-slate-500 dark:text-slate-400')
+                                        hot_rule_enabled_sw = ui.switch('启用正则替换', value=cfg.get('hot_rule_enabled', True)).classes('text-slate-700 dark:text-slate-200 shrink-0')
+                                    ui.label('正则规则没有阈值；需要修改规则内容时，请在下方编辑 hot-rule.txt。').classes('text-xs text-slate-500 dark:text-slate-400')
 
-                            def save_hotword_settings():
+                            def save_hotword_switches():
                                 ConfigManager.set_client_var('hot', bool(hot_enabled_sw.value))
                                 ConfigManager.set_client_var('hot_rule', bool(hot_rule_enabled_sw.value))
+                                ui.notify('替换开关已保存，下一次听写自动生效。', type='positive')
+
+                            def save_hotword_thresholds():
                                 ConfigManager.set_client_var('hot_thresh', float(hot_thresh_in.value or 0.85))
                                 ConfigManager.set_client_var('hot_similar', float(hot_similar_in.value or 0.6))
-                                ui.notify('热词与替换策略已保存，下一次听写自动生效。', type='positive')
+                                ui.notify('热词阈值已保存，下一次听写自动生效。', type='positive')
 
-                            with ui.row().classes('justify-end w-full'):
-                                ui.button('保存替换策略', icon='save', on_click=save_hotword_settings).classes('bg-amber-600 dark:bg-emerald-600 text-white px-4')
+                            hot_enabled_sw.on_value_change(lambda _: save_hotword_switches())
+                            hot_rule_enabled_sw.on_value_change(lambda _: save_hotword_switches())
+                            hot_thresh_in.on_value_change(lambda _: save_hotword_thresholds())
+                            hot_similar_in.on_value_change(lambda _: save_hotword_thresholds())
 
                         def render_rule_file_card(title: str, description: str, path: Path, content: str, height: int):
                             with ui.card().classes('bg-slate-50 dark:bg-slate-800/50 border border-slate-200/60 dark:border-slate-700/60 px-6 py-5 rounded-xl gap-3 w-full shadow-none'):
@@ -1748,7 +1851,7 @@ def main_page():
                     with ui.column().classes('gap-6 w-full pb-8'):
                         with ui.column().classes('gap-1 border-b border-slate-100 dark:border-slate-800 pb-4 w-full'):
                             ui.label('语音识别与硬件').classes('text-2xl font-bold text-slate-900 dark:text-white')
-                            ui.label('选择离线识别模型、语言策略、数字格式化与显卡预加速。保存后重启听写服务生效。').classes('text-sm text-slate-500 dark:text-slate-400')
+                            ui.label('选择离线识别模型、语言策略、数字格式化与显卡预加速；常用选项会在切换后自动保存。').classes('text-sm text-slate-500 dark:text-slate-400')
 
                         current_model_type = normalize_model_type(cfg.get('model_type', 'sensevoice'))
                         install_status = model_install_status()
@@ -1797,7 +1900,6 @@ def main_page():
 
                                     with ui.row().classes('items-center justify-end gap-2 w-full'):
                                         ui.button('打开模型目录', icon='folder_open', on_click=lambda: open_path_foreground(BASE_DIR / 'models')).props('outline color=amber-8').classes('bg-white h-10 px-4 rounded-lg')
-                                        ui.button('关闭', on_click=dialog.close).classes('bg-amber-600 text-white px-5')
                             dialog.open()
 
                         if not current_model_status['installed']:
@@ -1817,8 +1919,11 @@ def main_page():
 
                         with ui.grid(columns=2).classes('w-full gap-6'):
                             with ui.card().classes('bg-slate-50 dark:bg-slate-800/50 border border-slate-200/60 dark:border-slate-700/60 p-6 rounded-xl gap-4 shadow-none'):
-                                ui.icon('graphic_eq', size='md').classes('text-amber-600 dark:text-emerald-400')
-                                ui.label('识别模型').classes('font-bold text-slate-900 dark:text-white text-base')
+                                with ui.row().classes('items-start justify-between gap-3 w-full'):
+                                    with ui.column().classes('gap-2'):
+                                        ui.icon('graphic_eq', size='md').classes('text-amber-600 dark:text-emerald-400')
+                                        ui.label('识别模型').classes('font-bold text-slate-900 dark:text-white text-base')
+                                    ui.button(icon='help_outline', on_click=open_model_setup_dialog).props('flat round color=amber-8').classes('shrink-0')
                                 ui.label('只把本机已部署完整文件的模型放进可选列表，避免保存后服务端启动失败。').classes('text-xs text-slate-500 dark:text-slate-400')
                                 model_select = ui.select(
                                     options=model_options,
@@ -1836,8 +1941,6 @@ def main_page():
                                 def update_language_note():
                                     language_note.text = model_language_note(model_select.value)
                                     language_note.update()
-
-                                model_select.on_value_change(lambda _: update_language_note())
 
                                 with ui.column().classes('gap-1 w-full'):
                                     ui.label('本地模型文件状态').classes('text-xs font-semibold text-slate-500 dark:text-slate-400')
@@ -1896,39 +1999,72 @@ def main_page():
                                         aligner_llm_gpu_sw = ui.switch('字幕对齐 GGUF 使用 GPU', value=cfg.get('aligner_llm_use_gpu', False)).classes('text-slate-700 dark:text-slate-200')
                                         aligner_dml_pad_to_in = ui.number('字幕对齐 DML Padding 秒数', value=cfg.get('aligner_dml_pad_to', 30), min=0, step=1).classes('w-full')
 
-                        def save_engine_cfg():
+                                    def save_advanced_engine_cfg():
+                                        selected_model = normalize_model_type(model_select.value)
+                                        model_arg_class = MODEL_ARG_CLASSES.get(selected_model)
+                                        if model_arg_class and MODEL_DML_CONFIG_KEYS.get(selected_model):
+                                            ConfigManager.set_server_class_var(model_arg_class, 'dml_pad_to', int(dml_pad_to_in.value or 0))
+                                        ConfigManager.set_server_var('gpu_boost_cmd', gpu_boost_cmd_in.value or '')
+                                        ConfigManager.set_server_var('gpu_unboost_cmd', gpu_unboost_cmd_in.value or '')
+                                        ConfigManager.set_server_var('gpu_unboost_timeout', int(gpu_unboost_timeout_in.value or 0))
+                                        ConfigManager.set_server_var('aligner_idle_timeout', int(aligner_timeout_in.value or 0))
+                                        ConfigManager.set_client_var('mic_seg_duration', int(mic_seg_duration_in.value or 60))
+                                        ConfigManager.set_client_var('mic_seg_overlap', int(mic_seg_overlap_in.value or 0))
+                                        ConfigManager.set_client_var('file_seg_duration', int(file_seg_duration_in.value or 60))
+                                        ConfigManager.set_client_var('file_seg_overlap', int(file_seg_overlap_in.value or 0))
+                                        ConfigManager.set_server_class_var('ForceAlignerGGUFArgs', 'onnx_provider', aligner_provider_select.value or 'CPU')
+                                        ConfigManager.set_server_class_var('ForceAlignerGGUFArgs', 'llm_use_gpu', bool(aligner_llm_gpu_sw.value))
+                                        ConfigManager.set_server_class_var('ForceAlignerGGUFArgs', 'dml_pad_to', int(aligner_dml_pad_to_in.value or 0))
+                                        ui.notify('高级运行参数已保存，重启听写服务后完全生效。', type='positive')
+
+                                    with ui.row().classes('justify-end w-full pt-2'):
+                                        ui.button('保存高级参数', icon='save', on_click=save_advanced_engine_cfg).classes('bg-amber-600 dark:bg-emerald-600 text-white px-4')
+
+                        def save_model_selection():
                             selected_model = normalize_model_type(model_select.value)
                             selected_status = install_status.get(selected_model, {'installed': False})
                             if not selected_status['installed']:
                                 ui.notify('该模型文件未安装完整，已阻止保存。请先把模型放入 models 目录。', type='negative')
                                 return
                             ConfigManager.set_model_type(selected_model)
+                            update_language_note()
+                            onnx_key = MODEL_ONNX_CONFIG_KEYS.get(selected_model)
+                            if onnx_key:
+                                onnx_provider_select.value = ConfigManager.get_server_class_var(MODEL_ARG_CLASSES[selected_model], 'onnx_provider', 'CPU')
+                                onnx_provider_select.update()
+                            llm_gpu_key = MODEL_LLM_GPU_CONFIG_KEYS.get(selected_model)
+                            llm_use_gpu_sw.value = bool(cfg.get(llm_gpu_key, False)) if llm_gpu_key else False
+                            llm_use_gpu_sw.update()
+                            ui.notify('识别模型已保存，重启听写服务后完全生效。', type='positive')
+
+                        def save_language_selection():
                             ConfigManager.set_client_var('language', normalize_language_code(language_select.value))
+                            ui.notify('默认识别语言已保存，下一次听写读取配置。', type='positive')
+
+                        def save_output_format():
                             ConfigManager.set_server_var('format_num', bool(format_num_sw.value))
                             ConfigManager.set_server_var('format_spell', bool(format_spell_sw.value))
                             ConfigManager.set_client_var('traditional_convert', bool(traditional_sw.value))
-                            ConfigManager.set_server_var('gpu_boost_enabled', bool(gpu_boost_sw.value))
-                            ConfigManager.set_server_var('gpu_boost_cmd', gpu_boost_cmd_in.value or '')
-                            ConfigManager.set_server_var('gpu_unboost_cmd', gpu_unboost_cmd_in.value or '')
-                            ConfigManager.set_server_var('gpu_unboost_timeout', int(gpu_unboost_timeout_in.value or 0))
-                            ConfigManager.set_server_var('aligner_idle_timeout', int(aligner_timeout_in.value or 0))
-                            ConfigManager.set_client_var('mic_seg_duration', int(mic_seg_duration_in.value or 60))
-                            ConfigManager.set_client_var('mic_seg_overlap', int(mic_seg_overlap_in.value or 0))
-                            ConfigManager.set_client_var('file_seg_duration', int(file_seg_duration_in.value or 60))
-                            ConfigManager.set_client_var('file_seg_overlap', int(file_seg_overlap_in.value or 0))
-                            model_arg_class = MODEL_ARG_CLASSES.get(selected_model)
-                            if model_arg_class:
-                                ConfigManager.set_server_class_var(model_arg_class, 'onnx_provider', onnx_provider_select.value or 'CPU')
-                                ConfigManager.set_server_class_var(model_arg_class, 'dml_pad_to', int(dml_pad_to_in.value or 0))
-                                if selected_model in MODEL_LLM_GPU_CONFIG_KEYS:
-                                    ConfigManager.set_server_class_var(model_arg_class, 'llm_use_gpu', bool(llm_use_gpu_sw.value))
-                            ConfigManager.set_server_class_var('ForceAlignerGGUFArgs', 'onnx_provider', aligner_provider_select.value or 'CPU')
-                            ConfigManager.set_server_class_var('ForceAlignerGGUFArgs', 'llm_use_gpu', bool(aligner_llm_gpu_sw.value))
-                            ConfigManager.set_server_class_var('ForceAlignerGGUFArgs', 'dml_pad_to', int(aligner_dml_pad_to_in.value or 0))
-                            ui.notify('语音引擎与硬件配置已保存，重启听写服务后完全生效。', type='positive')
+                            ui.notify('输出格式已保存，下一次听写读取配置。', type='positive')
 
-                        with ui.row().classes('justify-end w-full'):
-                            ui.button('保存引擎配置', icon='save', on_click=save_engine_cfg).classes('bg-amber-600 dark:bg-emerald-600 text-white px-6')
+                        def save_hardware_acceleration():
+                            selected_model = normalize_model_type(model_select.value)
+                            model_arg_class = MODEL_ARG_CLASSES.get(selected_model)
+                            if model_arg_class and MODEL_ONNX_CONFIG_KEYS.get(selected_model):
+                                ConfigManager.set_server_class_var(model_arg_class, 'onnx_provider', onnx_provider_select.value or 'CPU')
+                            if model_arg_class and selected_model in MODEL_LLM_GPU_CONFIG_KEYS:
+                                ConfigManager.set_server_class_var(model_arg_class, 'llm_use_gpu', bool(llm_use_gpu_sw.value))
+                            ConfigManager.set_server_var('gpu_boost_enabled', bool(gpu_boost_sw.value))
+                            ui.notify('硬件加速配置已保存，重启听写服务后完全生效。', type='positive')
+
+                        model_select.on_value_change(lambda _: save_model_selection())
+                        language_select.on_value_change(lambda _: save_language_selection())
+                        format_num_sw.on_value_change(lambda _: save_output_format())
+                        format_spell_sw.on_value_change(lambda _: save_output_format())
+                        traditional_sw.on_value_change(lambda _: save_output_format())
+                        onnx_provider_select.on_value_change(lambda _: save_hardware_acceleration())
+                        llm_use_gpu_sw.on_value_change(lambda _: save_hardware_acceleration())
+                        gpu_boost_sw.on_value_change(lambda _: save_hardware_acceleration())
 
                 # === Tab 6: 📁 配置备份与迁移 (全量 JSON 导出与解析导入) ===
                 with ui.tab_panel(tab_backup):

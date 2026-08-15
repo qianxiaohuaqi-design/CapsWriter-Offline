@@ -38,7 +38,11 @@ class RoleConfig:
     selection_max_length: int = 1000              # 选中文字最大长度
 
     # 输出配置
-    output_mode: str = 'typing'                   # 输出方式: 'typing' 或 'toast' (即打字输出或弹窗输出)
+    output_mode: str = 'inherit'                  # 输出方式: 'inherit' 跟随总设置，或 'typing' / 'overlay_preview'
+    preview_close_mode: str = ''                  # 独立确认浮层关闭方式，留空则使用 AI 角色总设置
+    preview_base_seconds: int = 0                 # 独立自动关闭基础秒数，0 表示使用总设置
+    preview_seconds_per_20_chars: int = 0         # 兼容旧配置，当前浮层按文本长度分段计算
+    preview_max_seconds: int = 0                  # 独立自动关闭最长秒数，0 表示使用总设置
 
     # Toast 弹窗配置
     toast_initial_width: float = 0.5              # Toast 窗口初始宽度（0.5 = 50% 屏幕宽度）

@@ -33,19 +33,7 @@ def run_build(name: str, include_models: bool) -> None:
     )
 
     if not include_models:
-        model_dir = out_dir / "_internal" / "models"
-        model_dir.mkdir(parents=True, exist_ok=True)
-        (model_dir / "README_模型下载.txt").write_text(
-            "这是 CapsWriter 精简版，未内置 ASR 模型。\n"
-            "\n"
-            "推荐模型：SenseVoice-Small，体积较小，日常听写延迟低。\n"
-            "说明：这里使用的是原项目整理的适配模型下载包，SenseVoice 本身是独立开源语音识别模型。\n"
-            "下载地址：https://github.com/HaujetZhao/CapsWriter-Offline/releases/tag/models\n"
-            "下载后解压到此 models 目录，再回到 CapsWriter 的“语音识别与硬件”页面查看模型状态。\n"
-            "\n"
-            "也可以在软件页面里点击“模型配置指引”查看同样的信息。\n",
-            encoding="utf-8",
-        )
+        (out_dir / "_internal" / "models").mkdir(parents=True, exist_ok=True)
 
     zip_base = DIST / name
     zip_path = DIST / f"{name}.zip"

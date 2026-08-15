@@ -13,6 +13,7 @@ desktop_dir = Path(r"C:\Users\reina\Desktop")
 icon_path = base_dir / "assets" / "source" / "capswriter.ico"
 
 bat_path = base_dir / "启动 CapsWriter 智能控制中心.bat"
+launcher_vbs_path = base_dir / "启动 CapsWriter 智能控制中心.vbs"
 old_lnk_path = desktop_dir / "CapsWriter 智能控制中心.lnk"
 lnk_path = desktop_dir / "CapsWriter.lnk"
 
@@ -22,7 +23,7 @@ bat_lines = [
     "chcp 936 > nul",
     "title CapsWriter",
     "cd /d \"%~dp0\"",
-    "start \"\" pythonw \"%~dp0run_app.py\"",
+    "start \"\" wscript.exe \"%~dp0启动 CapsWriter 智能控制中心.vbs\"",
     "exit /b",
 ]
 bat_content = "\r\n".join(bat_lines) + "\r\n"
@@ -30,10 +31,20 @@ bat_content = "\r\n".join(bat_lines) + "\r\n"
 with open(bat_path, "wb") as f:
     f.write(bat_content.encode("gbk"))
 
+launcher_vbs_content = '''Set WshShell = CreateObject("WScript.Shell")
+Set Fso = CreateObject("Scripting.FileSystemObject")
+BaseDir = Fso.GetParentFolderName(WScript.ScriptFullName)
+Command = "pythonw.exe """ & BaseDir & "\\run_app.py"""
+WshShell.Run Command, 0, False
+'''
+
+with open(launcher_vbs_path, "wb") as f:
+    f.write(launcher_vbs_content.encode("gbk"))
+
 # 2. 通过 VBScript 创建快捷方式
 vbs_path = base_dir / "make_shortcut.vbs"
-target_path = sys.executable.replace('python.exe', 'pythonw.exe')
-arguments = str(base_dir / 'run_app.py')
+target_path = str(Path(os.environ.get('WINDIR', r'C:\Windows')) / 'System32' / 'wscript.exe')
+arguments = str(launcher_vbs_path)
 
 vbs_content = f'''
 Set WshShell = CreateObject("WScript.Shell")

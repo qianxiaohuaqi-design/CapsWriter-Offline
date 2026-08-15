@@ -109,6 +109,7 @@ class FloatingPillWindow:
         self._final_hide_after_id = None
         self._preview_remaining_seconds = None
         self._preview_user_editing = False
+        self._preview_config = None
         self._preview_keyboard_listener = None
         self._preview_pressed_keys = set()
         self.width = 300
@@ -236,8 +237,9 @@ class FloatingPillWindow:
         if final:
             self._final_hide_after_id = self.root.after(1800, self.hide)
 
-    def show_preview(self, text, final=True):
+    def show_preview(self, text, final=True, preview_config=None):
         """Show final text in a persistent editable preview overlay."""
+        self._preview_config = preview_config or None
         if not final:
             self.update_text(text, final=False, force_caption=True)
             return
@@ -482,15 +484,20 @@ class FloatingPillWindow:
 
     def _schedule_preview_autoclose(self, text):
         self._cancel_preview_autoclose()
-        if get_client_config('preview_close_mode', 'auto') != 'auto':
+        if self._preview_setting('close_mode', 'preview_close_mode', 'auto') != 'auto':
             self._preview_remaining_seconds = None
             if self.preview_status:
                 self.preview_status.config(text='已复制到剪贴板，按 Esc 关闭')
             return
-        base = max(2, int(get_client_config('preview_base_seconds', 8) or 8))
-        max_seconds = max(base, int(get_client_config('preview_max_seconds', 60) or 60))
+        base = max(2, int(self._preview_setting('base_seconds', 'preview_base_seconds', 8) or 8))
+        max_seconds = max(base, int(self._preview_setting('max_seconds', 'preview_max_seconds', 60) or 60))
         self._preview_remaining_seconds = self._preview_duration_seconds(len(text), base, max_seconds)
         self._tick_preview_countdown()
+
+    def _preview_setting(self, runtime_key, config_key, default):
+        if isinstance(self._preview_config, dict) and runtime_key in self._preview_config:
+            return self._preview_config.get(runtime_key)
+        return get_client_config(config_key, default)
 
     @staticmethod
     def _preview_duration_seconds(text_length, base, max_seconds):
@@ -544,7 +551,7 @@ class FloatingPillWindow:
         self._preview_user_editing = True
         self._cancel_preview_autoclose()
         if self.preview_status:
-            if get_client_config('preview_close_mode', 'auto') == 'auto':
+            if self._preview_setting('close_mode', 'preview_close_mode', 'auto') == 'auto':
                 self.preview_status.config(text='正在编辑，倒计时已暂停')
             else:
                 self.preview_status.config(text='正在编辑')
@@ -554,7 +561,7 @@ class FloatingPillWindow:
             return
         self._sync_preview_clipboard()
         self._preview_user_editing = False
-        if get_client_config('preview_close_mode', 'auto') == 'auto':
+        if self._preview_setting('close_mode', 'preview_close_mode', 'auto') == 'auto':
             self._tick_preview_countdown()
         elif self.preview_status:
             self.preview_status.config(text='已复制到剪贴板，按 Esc 关闭')
@@ -743,6 +750,7 @@ class FloatingPillWindow:
         self._target_hwnd = None
         self._preview_remaining_seconds = None
         self._preview_user_editing = False
+        self._preview_config = None
         self._stop_preview_keyboard_listener()
         self._cancel_text_animation()
         self._cancel_pending_hide_timers()

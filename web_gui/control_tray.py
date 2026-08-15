@@ -151,14 +151,18 @@ class ControlTray:
 
     def _complete_exit(self, icon=None, item=None):
         with self._lock:
-            # 1. 强制释放在 OS 中被卡住的修饰键
+            # 1. 先请求产品级退出，确保客户端、服务端和模型子进程先停掉。
             try:
-                from core.tools.key_reset import release_all_modifier_keys
-                release_all_modifier_keys()
+                self.exit_app()
             except Exception:
                 pass
 
-            # 2. 停止 UI 窗口及后端全量进程
+            try:
+                process_manager.stop_all(include_self=False)
+            except Exception:
+                pass
+
+            # 2. 停止 UI 窗口；上一步失败时这里仍可兜底清掉 GUI。
             try:
                 self.stop_gui()
             except Exception:
@@ -170,11 +174,6 @@ class ControlTray:
                 except Exception:
                     pass
             _release_tray_owner()
-
-            try:
-                self.exit_app()
-            except Exception:
-                pass
 
     def start(self) -> None:
         try:
