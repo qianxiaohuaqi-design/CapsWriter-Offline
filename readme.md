@@ -33,7 +33,7 @@ CapsWriter-Offline GUI 增强版是一个 Windows 离线语音输入工具。它
 如果只是日常使用，推荐从 GitHub Releases 下载打包好的发布包：
 
 - `CapsWriter-Full.zip`：完整版，内置本地 ASR 模型，下载后解压即可运行，体积较大。
-- `CapsWriter-Lite.zip`：精简版，不内置 ASR 模型，体积较小；首次使用前需要按包内说明下载模型并放入 `models/` 目录。
+- `CapsWriter-Lite.zip`：精简版，不内置 ASR 模型，体积较小；首次使用前可在“语音识别与硬件”页面打开模型配置指引，下载模型并放入 `models/` 目录。
 
 解压后运行包内的 `CapsWriter.exe`。
 
@@ -56,7 +56,7 @@ pip install -r requirements-server.txt
 
 ### 准备模型
 
-将模型文件放入 `models/` 下对应目录。各模型目录内保留了下载链接说明。
+将模型文件放入 `models/` 下对应目录。也可以在控制中心“语音识别与硬件”页面打开模型配置指引，查看推荐模型、下载地址和模型目录入口。
 
 ### 启动
 
