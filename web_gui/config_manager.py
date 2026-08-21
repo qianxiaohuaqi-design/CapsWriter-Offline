@@ -506,6 +506,8 @@ class ConfigManager:
             'enter_apps': ConfigManager.get_client_var('enter_apps', [('happ.exe', 0.5), ('hexin.exe', 0.5)]),
             'save_audio': ConfigManager.get_client_var('save_audio', False),
             'save_diary': ConfigManager.get_client_var('save_diary', False),
+            'history_auto_clear_on_start': ConfigManager.get_client_var('history_auto_clear_on_start', False),
+            'history_max_items': ConfigManager.get_client_var('history_max_items', 200),
             'pill_overlay': ConfigManager.get_pill_overlay_enabled(),
 
             # 语音引擎与硬件
@@ -662,7 +664,7 @@ class ConfigManager:
         for key in ('mic_seg_duration', 'mic_seg_overlap', 'file_seg_duration', 'file_seg_overlap'):
             if key in configs:
                 ConfigManager.set_client_var(key, configs[key])
-        for key in ('file_save_srt', 'file_save_txt', 'file_save_json', 'file_save_merge'):
+        for key in ('file_save_srt', 'file_save_txt', 'file_save_json', 'file_save_merge', 'history_auto_clear_on_start', 'history_max_items'):
             if key in configs:
                 ConfigManager.set_client_var(key, configs[key])
 
@@ -772,11 +774,19 @@ class ConfigManager:
     # --- 客户端变量读写助手 ---
     @staticmethod
     def get_client_var(var_name, default_val):
-        return ConfigManager._get_python_var(CONFIG_CLIENT_PATH, var_name, default_val)
+        val = ConfigManager._get_python_class_var(CONFIG_CLIENT_PATH, 'ClientConfig', var_name, None)
+        if val is None:
+            val = ConfigManager._get_python_var(CONFIG_CLIENT_PATH, var_name, default_val)
+        return val
 
     @staticmethod
     def set_client_var(var_name, val):
-        return ConfigManager._set_python_var(CONFIG_CLIENT_PATH, var_name, val)
+        from config_client import ClientConfig as Config
+        setattr(Config, var_name, val)
+        ok = ConfigManager._set_python_class_var(CONFIG_CLIENT_PATH, 'ClientConfig', var_name, val)
+        if not ok:
+            ok = ConfigManager._set_python_var(CONFIG_CLIENT_PATH, var_name, val)
+        return ok
 
     # --- 服务端变量读写助手 ---
     @staticmethod

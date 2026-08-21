@@ -16,6 +16,7 @@ from typing import Any
 from uuid import uuid4
 
 from . import logger
+from config_client import ClientConfig as Config
 
 BASE_DIR = Path(__file__).resolve().parents[3]
 HISTORY_PATH = BASE_DIR / 'web_gui' / 'input_history.jsonl'
@@ -24,6 +25,23 @@ DEFAULT_MAX_ITEMS = 200
 DIARY_RE = re.compile(r'^\[(?P<time>\d{2}:\d{2}:\d{2})\]\((?P<audio>.*)\)\s+(?P<text>.+)$')
 
 _LOCK = threading.Lock()
+_AUTO_CLEARED_THIS_SESSION = False
+
+
+def _check_auto_clear_on_startup() -> None:
+    """如果配置开启了启动自动清空历史，且当前会话尚未清空过，则自动执行清空。"""
+    global _AUTO_CLEARED_THIS_SESSION
+    if _AUTO_CLEARED_THIS_SESSION:
+        return
+    _AUTO_CLEARED_THIS_SESSION = True
+    if getattr(Config, 'history_auto_clear_on_start', False):
+        try:
+            logger.info("检测到已开启【每次启动自动清空历史】，正在清空历史记录...")
+            CLEAR_MARKER_PATH.parent.mkdir(parents=True, exist_ok=True)
+            CLEAR_MARKER_PATH.write_text(datetime.now().isoformat(timespec='seconds'), encoding='utf-8')
+            _write_jsonl([])
+        except Exception as e:
+            logger.debug(f"启动自动清空历史失败: {e}")
 
 
 def _read_jsonl(path: Path = HISTORY_PATH) -> list[dict[str, Any]]:
@@ -120,12 +138,15 @@ def append_input_history(
     paste: bool | None = None,
     process_name: str = '',
     time_start: float | None = None,
-    max_items: int = DEFAULT_MAX_ITEMS,
+    max_items: int | None = None,
 ) -> None:
     """追加一条最终输出历史。失败只写日志，不影响核心听写输出。"""
+    _check_auto_clear_on_startup()
     text = (text or '').strip()
     if not text:
         return
+
+    effective_max_items = max_items if max_items is not None else getattr(Config, 'history_max_items', DEFAULT_MAX_ITEMS)
 
     record = {
         'id': uuid4().hex,
@@ -145,7 +166,7 @@ def append_input_history(
         with _LOCK:
             records = _read_jsonl()
             records.append(record)
-            _write_jsonl(records[-max_items:])
+            _write_jsonl(records[-effective_max_items:] if effective_max_items > 0 else records)
         logger.debug(f"输入历史已写入: {HISTORY_PATH}")
     except Exception as e:
         logger.debug(f"写入输入历史失败，已跳过: {e}")
@@ -153,11 +174,14 @@ def append_input_history(
 
 def load_input_history(limit: int = 80) -> list[dict[str, Any]]:
     """读取最近输入历史，按时间倒序返回。"""
+    _check_auto_clear_on_startup()
+    max_cfg = getattr(Config, 'history_max_items', 0)
+    effective_limit = min(limit, max_cfg) if max_cfg > 0 else limit
     with _LOCK:
         records = _read_jsonl()
 
-    jsonl_records = list(reversed(records[-limit:]))
-    diary_records = _load_diary_history(limit=limit)
+    jsonl_records = list(reversed(records[-effective_limit:])) if effective_limit > 0 else list(reversed(records))
+    diary_records = _load_diary_history(limit=effective_limit if effective_limit > 0 else 80)
 
     merged = []
     seen = set()
@@ -168,7 +192,7 @@ def load_input_history(limit: int = 80) -> list[dict[str, Any]]:
         seen.add(key)
         merged.append(item)
 
-    return sorted(merged, key=lambda item: item.get('created_at', ''), reverse=True)[:limit]
+    return sorted(merged, key=lambda item: item.get('created_at', ''), reverse=True)[:effective_limit]
 
 
 def clear_input_history() -> None:

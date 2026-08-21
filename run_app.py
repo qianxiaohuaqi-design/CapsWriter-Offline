@@ -145,7 +145,7 @@ def _show_control_center_window() -> bool:
         return False
 
 
-def _ensure_control_center_visible(delay: float = 2.5) -> None:
+def _ensure_control_center_visible(delay: float = 0.1) -> None:
     def worker() -> None:
         time.sleep(delay)
         for _ in range(60):

@@ -43,8 +43,13 @@ WebUI | 网页UI | Web UI
 NiceGUI | 尼斯GUI | 耐斯GUI
 Figma | 飞格玛
 Penpot | 喷泼特
-DeepSeek | 深度求索 | 深度思考
-Ollama | 欧拉玛
+DeepSeek | 迪普思克 | 深度求索 | 深度思考 | 深度思克
+Codex | 扣德克斯 | 科德克斯 | 扣得克斯 | 扣德斯
+Claude Code | 克劳德 code | 克劳德扣德 | 克劳德代码 | 克劳德 扣德
+Claude | 克劳德
+Antigravity | 安提格拉维蒂 | 安提格拉维提 | 反重力
+Ollama | 欧拉玛 | 欧拉马
+Cursor | 柯瑟 | 库瑟
 JSON | 杰森
 HTML | H T M L
 CSS | C S S

@@ -108,7 +108,7 @@ class SenseVoiceArgs:
     decoder_path = ModelPaths.sensevoice_decoder.as_posix()
     tokenizer_path = ModelPaths.sensevoice_tokenizer.as_posix()
     itn = True                  # 原生输出阿拉伯数字
-    onnx_provider = 'CPU'       # ONNX 推理后端 (CPU, DML)
+    onnx_provider = 'DML'       # ONNX 推理后端 (CPU, DML)
     top_k = 8                   # 热词检索的 CTC 空间大小
     dml_pad_to = 30             # 开启 DirectML 加速时，短音频统一填充到指定长度，有加速效果
 

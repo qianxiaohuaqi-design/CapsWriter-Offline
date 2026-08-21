@@ -1368,16 +1368,13 @@ def main_page():
                         with ui.card().classes('bg-slate-50 dark:bg-slate-800/50 border border-slate-200/60 dark:border-slate-700/60 p-6 rounded-xl gap-4 w-full shadow-none'):
                             history_view = {'mode': 'compact'}
 
-                            with ui.row().classes('items-start justify-between w-full gap-3 flex-wrap'):
-                                with ui.column().classes('gap-0.5'):
-                                    ui.label('最近听写输入').classes('font-semibold text-slate-900 dark:text-slate-100 text-lg')
-                                    history_hint = ui.label('显示最近 3 条，历史仅保存在本机。搜索时会展示全部匹配结果。').classes('text-sm text-slate-500')
+                            # 头部：左侧标题，右侧固定右对齐【设置】与【展开全部/收起】按钮
+                            with ui.row().classes('items-center justify-between w-full gap-3 flex-wrap'):
+                                ui.label('历史记录').classes('font-semibold text-slate-900 dark:text-slate-100 text-lg')
 
-                                toggle_history_button = ui.button('展开全部', icon='unfold_more').props('flat color=amber-8').classes('h-9 px-3 rounded-lg text-sm')
-
-                            with ui.row().classes('items-center gap-2 flex-wrap'):
-                                refresh_button = ui.button('刷新', icon='refresh').props('outline color=grey-7').classes('h-10 px-4 rounded-lg text-sm bg-white')
-                                clear_button = ui.button('清空历史', icon='delete').props('outline color=red-7').classes('h-10 px-4 rounded-lg text-sm bg-white')
+                                with ui.row().classes('items-center gap-3 shrink-0'):
+                                    history_settings_button = ui.button('设置', icon='tune').props('outline color=grey-8').classes('h-9 px-3 rounded-lg text-sm bg-white')
+                                    toggle_history_button = ui.button('展开全部', icon='unfold_more').props('flat color=amber-8').classes('h-9 px-3 rounded-lg text-sm')
 
                             history_query = {'value': ''}
                             with ui.row().classes('items-center gap-2 w-full flex-nowrap'):
@@ -1415,52 +1412,58 @@ def main_page():
 
                             @ui.refreshable
                             def render_input_history():
+                                history_box.clear()
                                 query = history_query['value'].strip().lower()
                                 records = load_input_history(limit=80)
+
                                 if query:
                                     records = [
-                                        item for item in records
-                                        if query in (item.get('text', '') + item.get('original_text', '') + item.get('process_name', '') + item.get('role_name', '')).lower()
+                                        r for r in records
+                                        if query in r.get('text', '').lower()
+                                        or query in (r.get('original_text') or '').lower()
+                                        or query in (r.get('process_name') or '').lower()
+                                        or query in (r.get('role_name') or '').lower()
                                     ]
                                 elif history_view['mode'] == 'compact':
                                     records = records[:3]
 
-                                if not records:
-                                    message = '没有找到匹配的输入历史。' if query else '暂无输入历史。完成一次听写输出后，这里会自动出现记录。'
-                                    ui.label(message).classes('text-sm text-slate-500 py-6')
-                                    return
+                                with history_box:
+                                    if not records:
+                                        message = '没有找到匹配的历史记录。' if query else '暂无历史记录。完成一次听写输出后，这里会自动出现记录。'
+                                        ui.label(message).classes('text-sm text-slate-500 py-6')
+                                        return
 
-                                for item in records:
-                                    text = item.get('text', '')
-                                    preview = text if len(text) <= 180 else f'{text[:180]}...'
-                                    role_name = item.get('role_name') or ''
-                                    process_name = item.get('process_name') or '未知应用'
-                                    mode_label = 'AI 润色' if item.get('processed') else '直接输出'
-                                    paste_label = '粘贴' if item.get('paste') else '打字'
+                                    for item in records:
+                                        text = item.get('text', '')
+                                        preview = text if len(text) <= 180 else f'{text[:180]}...'
+                                        role_name = item.get('role_name') or ''
+                                        process_name = item.get('process_name') or '未知应用'
+                                        mode_label = 'AI 润色' if item.get('processed') else '直接输出'
+                                        paste_label = '粘贴' if item.get('paste') else '打字'
 
-                                    with ui.card().classes('w-full bg-white border border-slate-200/80 rounded-xl p-4 gap-3 shadow-none'):
-                                        with ui.row().classes('items-start justify-between gap-4 w-full'):
-                                            with ui.column().classes('gap-2 min-w-0 flex-1'):
-                                                with ui.row().classes('items-center gap-2 flex-wrap'):
-                                                    ui.label(item.get('created_at', '')).classes('text-xs font-semibold text-slate-500')
-                                                    ui.badge(mode_label, color='orange-1').classes('text-amber-700 border border-amber-200')
-                                                    ui.badge(paste_label, color='grey-2').classes('text-slate-600 border border-slate-200')
-                                                    if role_name:
-                                                        ui.badge(role_name, color='blue-1').classes('text-blue-700 border border-blue-200')
-                                                    ui.label(process_name).classes('text-xs text-slate-400')
-                                                ui.label(preview).classes('text-base text-slate-900 leading-relaxed whitespace-pre-wrap break-words')
+                                        with ui.card().classes('w-full bg-white border border-slate-200/80 rounded-xl p-4 gap-3 shadow-none'):
+                                            with ui.row().classes('items-start justify-between gap-4 w-full'):
+                                                with ui.column().classes('gap-2 min-w-0 flex-1'):
+                                                    with ui.row().classes('items-center gap-2 flex-wrap'):
+                                                        ui.label(item.get('created_at', '')).classes('text-xs font-semibold text-slate-500')
+                                                        ui.badge(mode_label, color='orange-1').classes('text-amber-700 border border-amber-200')
+                                                        ui.badge(paste_label, color='grey-2').classes('text-slate-600 border border-slate-200')
+                                                        if role_name:
+                                                            ui.badge(role_name, color='blue-1').classes('text-blue-700 border border-blue-200')
+                                                        ui.label(process_name).classes('text-xs text-slate-400')
+                                                    ui.label(preview).classes('text-base text-slate-900 leading-relaxed whitespace-pre-wrap break-words')
 
-                                            with ui.row().classes('items-center gap-2 shrink-0'):
-                                                        ui.button(icon='content_copy', on_click=partial(copy_text_to_clipboard, text)).props('flat round color=amber-8 title="复制最终文本"')
-                                                        ui.button(icon='open_in_full', on_click=partial(show_history_detail, item)).props('flat round color=grey-7 title="查看全文"')
+                                                with ui.row().classes('items-center gap-2 shrink-0'):
+                                                    ui.button(icon='content_copy', on_click=partial(copy_text_to_clipboard, text)).props('flat round color=amber-8 title="复制最终文本"')
+                                                    ui.button(icon='open_in_full', on_click=partial(show_history_detail, item)).props('flat round color=grey-7 title="查看全文"')
 
                             with history_box:
                                 render_input_history()
 
                             def confirm_clear_history():
                                 with ui.dialog() as dialog, ui.card().classes('w-full max-w-sm p-6 bg-white rounded-2xl gap-4'):
-                                    ui.label('清空输入历史？').classes('text-lg font-bold text-slate-900')
-                                    ui.label('这只会清除 GUI 输入历史和旧日记回填显示，不删除 .md 日记、录音、转写输出和配置。').classes('text-sm text-slate-500')
+                                    ui.label('清空历史记录？').classes('text-lg font-bold text-slate-900')
+                                    ui.label('这只会清除 GUI 历史记录和旧日记回填显示，不删除 .md 日记、录音、转写输出和配置。').classes('text-sm text-slate-500')
 
                                     def apply_clear_history():
                                         clear_input_history()
@@ -1468,7 +1471,7 @@ def main_page():
                                         search_input.value = ''
                                         dialog.close()
                                         render_input_history.refresh()
-                                        ui.notify('输入历史已清空。', type='positive')
+                                        ui.notify('历史记录已清空。', type='positive')
 
                                     with ui.row().classes('justify-end w-full gap-3'):
                                         ui.button('取消', on_click=dialog.close).props('flat color=grey-7')
@@ -1476,17 +1479,11 @@ def main_page():
 
                                 dialog.open()
 
-                            def refresh_input_history():
-                                render_input_history.refresh()
-                                ui.notify('输入历史已刷新。', type='positive')
-
                             def set_history_view(mode: str):
                                 history_view['mode'] = mode
                                 if mode == 'expanded':
-                                    history_hint.set_text('已展开历史列表，历史仅保存在本机。')
                                     toggle_history_button.set_text('收起')
                                 else:
-                                    history_hint.set_text('显示最近 3 条，历史仅保存在本机。搜索时会展示全部匹配结果。')
                                     toggle_history_button.set_text('展开全部')
                                 render_input_history.refresh()
 
@@ -1494,16 +1491,93 @@ def main_page():
                                 next_mode = 'compact' if history_view['mode'] == 'expanded' else 'expanded'
                                 set_history_view(next_mode)
 
-                            def apply_history_search(value):
-                                history_query['value'] = str(value or '')
-                                render_input_history.refresh()
+                            def open_history_settings_dialog():
+                                current_auto_clear = ConfigManager.get_client_var('history_auto_clear_on_start', False)
+                                current_max_items = ConfigManager.get_client_var('history_max_items', 0)
+                                init_mode = 'unlimited' if current_max_items == 0 else 'custom'
+                                init_num = current_max_items if current_max_items > 0 else 200
+
+                                with ui.dialog() as dialog, ui.card().classes('w-full max-w-md p-6 bg-white rounded-2xl gap-5'):
+                                    with ui.row().classes('items-center justify-between w-full'):
+                                        ui.label('历史记录设置').classes('text-xl font-bold text-slate-900 dark:text-slate-100')
+                                        ui.button(icon='close', on_click=dialog.close).props('flat round color=grey-7')
+
+                                    # 1. 启动自动清空
+                                    with ui.column().classes('gap-1 w-full bg-slate-50 dark:bg-slate-800/80 p-4 rounded-xl border border-slate-200/60 dark:border-slate-700'):
+                                        auto_sw = ui.switch(
+                                            '每次重启/启动 CapsWriter 时自动清空历史',
+                                            value=current_auto_clear
+                                        ).props('dense').classes('text-sm font-medium text-slate-800 dark:text-slate-200')
+                                        ui.label('开启后，重新启动应用时会自动清除过往历史记录。').classes('text-xs text-slate-500 dark:text-slate-400 pl-7')
+
+                                    # 2. 保留策略
+                                    with ui.column().classes('gap-2 w-full bg-slate-50 dark:bg-slate-800/80 p-4 rounded-xl border border-slate-200/60 dark:border-slate-700'):
+                                        ui.label('历史记录保留策略').classes('text-sm font-semibold text-slate-800 dark:text-slate-200')
+
+                                        mode_radio = ui.radio(
+                                            options={
+                                                'unlimited': '全部保留 (不限制历史保存条数，默认)',
+                                                'custom': '指定保留条数上限 (手动设定条数)'
+                                            },
+                                            value=init_mode
+                                        ).props('dense').classes('text-sm text-slate-700 dark:text-slate-300 gap-2')
+
+                                        num_input_container = ui.column().classes('w-full pl-6 pt-1')
+                                        with num_input_container:
+                                            num_input = ui.number(
+                                                label='手动输入保存条数上限',
+                                                value=init_num,
+                                                min=10,
+                                                max=50000,
+                                                step=10
+                                            ).props('outlined dense').classes('w-full text-sm bg-white dark:bg-slate-900')
+                                            num_input.set_visibility(init_mode == 'custom')
+
+                                        def on_mode_change(e):
+                                            num_input.set_visibility(e.value == 'custom')
+                                        mode_radio.on_value_change(on_mode_change)
+
+                                    # 3. 清空当前历史（正常中性外观）
+                                    with ui.column().classes('gap-1 w-full bg-slate-50 dark:bg-slate-800/80 p-4 rounded-xl border border-slate-200/60 dark:border-slate-700'):
+                                        with ui.row().classes('items-center justify-between w-full'):
+                                            with ui.column().classes('gap-0.5'):
+                                                ui.label('清空当前历史').classes('text-sm font-semibold text-slate-800 dark:text-slate-200')
+                                                ui.label('擦除本机所有已保存的历史记录').classes('text-xs text-slate-500 dark:text-slate-400')
+                                            ui.button('清空历史', icon='delete', on_click=lambda: (dialog.close(), confirm_clear_history())).props('outline color=grey-8').classes('h-9 px-3 rounded-lg text-xs bg-white dark:bg-slate-900')
+
+                                    # 底部操作按钮
+                                    with ui.row().classes('justify-end w-full gap-2 pt-2'):
+                                        ui.button('取消', on_click=dialog.close).props('flat color=grey-7').classes('h-9 px-4 rounded-lg text-sm')
+                                        def save_and_close():
+                                            try:
+                                                new_auto_clear = bool(auto_sw.value)
+                                                if mode_radio.value == 'unlimited':
+                                                    new_max_items = 0
+                                                else:
+                                                    try:
+                                                        new_max_items = max(10, int(num_input.value or 200))
+                                                    except (ValueError, TypeError):
+                                                        new_max_items = 200
+
+                                                ConfigManager.set_client_var('history_auto_clear_on_start', new_auto_clear)
+                                                ConfigManager.set_client_var('history_max_items', new_max_items)
+                                                render_input_history.refresh()
+                                                dialog.close()
+                                                mode_desc = '全部保留 (不限条数)' if new_max_items == 0 else f'最多保留 {new_max_items} 条'
+                                                ui.notify(f'历史配置已保存：{mode_desc}', type='positive')
+                                            except Exception as ex:
+                                                ui.notify(f'保存失败: {ex}', type='negative')
+
+                                        ui.button('保存设置', icon='check', on_click=save_and_close).props('unelevated color=amber-8').classes('h-9 px-4 rounded-lg text-sm')
+
+                                dialog.open()
 
                             search_input.on('update:model-value', lambda e: apply_history_search(e.args))
                             search_button.on_click(lambda *_: render_input_history.refresh())
                             search_input.on('keydown.enter', lambda *_: render_input_history.refresh())
-                            refresh_button.on_click(refresh_input_history)
-                            clear_button.on_click(confirm_clear_history)
+                            history_settings_button.on_click(open_history_settings_dialog)
                             toggle_history_button.on_click(toggle_history_view)
+
 
                             last_history_mtime = {'value': max(
                                 (path.stat().st_mtime for path in (HISTORY_PATH, CLEAR_MARKER_PATH) if path.exists()),

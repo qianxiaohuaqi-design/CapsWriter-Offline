@@ -15,13 +15,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable, Optional
 
-from core.client.connection import WebSocketManager
-from core.client.hotword.manager import HotwordManager
-from core.client.state import ClientState
-from core.client.transcribe.file_transcriber import FileTranscriber
-from core.client.transcribe.media_tool import MediaTool
-from core.client.transcribe.result_handler import ResultHandler
-from core.tools import srt_from_txt
 from core.protocol import RecognitionMessage
 from config_client import ClientConfig as Config
 
@@ -46,6 +39,9 @@ class ControlCenterTranscriptionApp:
 
     def __init__(self):
         import asyncio
+        from core.client.connection import WebSocketManager
+        from core.client.hotword.manager import HotwordManager
+        from core.client.state import ClientState
 
         self.loop = asyncio.get_running_loop()
         self.state = ClientState(app=self)
@@ -72,6 +68,7 @@ def _collect_output_files(file: Path) -> dict[str, Path]:
 
 def get_media_tool_status() -> dict:
     """Return FFmpeg/ffprobe availability without printing user-facing console noise."""
+    from core.client.transcribe.media_tool import MediaTool
     ffmpeg_path, ffprobe_path = MediaTool.resolve_tools()
     return {
         'ffmpeg': ffmpeg_path,
@@ -83,6 +80,7 @@ def get_media_tool_status() -> dict:
 
 def regenerate_srt_from_txt(txt_file: Path) -> tuple[bool, str, Optional[Path]]:
     """Regenerate an SRT file from an edited TXT and the matching JSON timestamp file."""
+    from core.tools import srt_from_txt
     txt_file = Path(txt_file).expanduser().resolve()
     if not txt_file.exists():
         return False, f'TXT 文件不存在：{txt_file}', None
@@ -126,6 +124,9 @@ async def transcribe_file(file: Path, progress: Optional[ProgressCallback] = Non
     def emit(phase: str, percent: float, detail: str) -> None:
         if progress:
             progress({'phase': phase, 'percent': max(0, min(100, percent)), 'detail': detail})
+
+    from core.client.transcribe.file_transcriber import FileTranscriber
+    from core.client.transcribe.media_tool import MediaTool
 
     file = Path(file).expanduser().resolve()
     app = ControlCenterTranscriptionApp()

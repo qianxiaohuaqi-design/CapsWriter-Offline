@@ -23,10 +23,15 @@ from core.logger import get_logger, setup_logger
 setup_logger('client', level=Config.log_level)
 logger = get_logger('client')
 
-# 门面类
-from core.client.app import CapsWriterClient
+# 门面类 (使用 __getattr__ 延迟加载，避免只导入 logger 时把音频/Hook/GUI重度驱动库全部触发)
+def __getattr__(name: str):
+    if name == 'CapsWriterClient':
+        from core.client.app import CapsWriterClient
+        return CapsWriterClient
+    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
 
 __all__ = [
     'CapsWriterClient',
+    'logger',
 ]
 
