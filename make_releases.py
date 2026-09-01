@@ -4,7 +4,6 @@ CapsWriter-Offline 商业级解压即用发行包打包脚本
 
 构建极简清爽的发版解压目录结构：
 - CapsWriter.exe            (全局唯一可执行启动主程序)
-- readme.md                 (使用说明文档)
 - hot.txt / hot-rule.txt    (干净标准的热词模版，彻底擦除作者个性化热词与私人正则)
 - config_client.py / config_server.py (运行配置文件)
 - models/                   (语音识别模型文件夹，扁平单层结构，包含实测 SenseVoice 模型及单一说明文件)
@@ -116,11 +115,10 @@ def assemble_clean_release_directory():
             if (internal_webgui / history_file).exists():
                 (internal_webgui / history_file).unlink()
 
-    # 2. 根目录仅放置【配置文件 + 用户文档 + 模型目录 + 唯一的 CapsWriter.exe】（已去除 LICENSE 等非必要杂物）
+    # 2. 根目录仅放置【配置文件 + 模型目录 + 唯一的 CapsWriter.exe】（已去除 readme.md, LICENSE 等无用说明杂物）
     user_root_files = [
         'config_client.py',
         'config_server.py',
-        'readme.md',
     ]
     for file in user_root_files:
         src_file = BASE_DIR / file
@@ -156,12 +154,14 @@ def assemble_clean_release_directory():
     # 根目录仅保留单个标准说明 TXT
     (models_dest / '模型下载与说明.txt').write_text(MODEL_README_CONTENT, encoding='utf-8')
 
-    # 4. 彻底清理根目录下所有冗余的 .bat, .vbs, LICENSE 等杂文件
+    # 4. 彻底清理根目录下所有冗余的 .bat, .vbs, LICENSE, readme.md 等杂文件
     redundant_files = [
         '启动 CapsWriter 离线语音输入.bat',
         '启动 CapsWriter 智能控制中心.vbs',
         '运行自动化自测试与故障诊断.bat',
         'LICENSE',
+        'readme.md',
+        'README.md',
         'build.spec',
         'build-client.spec',
         'make_releases.py',
@@ -172,7 +172,7 @@ def assemble_clean_release_directory():
         if r_path.exists():
             r_path.unlink()
 
-    print("✅ 极简运行目录装配完成！已擦除作者个人热词与规则，剔除 LICENSE 杂物，根目录仅保留【CapsWriter.exe】与干净模版。")
+    print("✅ 极简运行目录装配完成！已移除 readme.md / LICENSE，根目录仅保留【CapsWriter.exe】与必需配置文件。")
 
 
 def build_zip_package(output_zip: Path, is_lite: bool = False):
