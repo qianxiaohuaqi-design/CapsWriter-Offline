@@ -147,5 +147,9 @@ class TextOutput:
         Args:
             text: 要输出的文本
         """
-        logger.debug(f"使用打字方式输出文本，长度: {len(text)}")
-        keyboard.write(text)
+        clean_text = text.lstrip('\r\n')
+        if not clean_text:
+            return
+        logger.debug(f"使用打字方式输出文本，长度: {len(clean_text)}")
+        keyboard.write(clean_text)
+

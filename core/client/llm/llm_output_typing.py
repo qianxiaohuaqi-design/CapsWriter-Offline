@@ -60,9 +60,10 @@ async def _process_streaming(handler, role_config, content, matched_hotwords) ->
     """处理流式打字模式：边生成边模拟按键打字"""
     chunks = []
     pending_buffer = ""
+    has_written_first_char = False
 
     def stream_write_chunk(chunk: str):
-        nonlocal pending_buffer
+        nonlocal pending_buffer, has_written_first_char
         if not chunk: return
         chunks.append(chunk)
 
@@ -83,7 +84,11 @@ async def _process_streaming(handler, role_config, content, matched_hotwords) ->
             content_to_write = ""
             trailing = full_current
 
+        if not has_written_first_char:
+            content_to_write = content_to_write.lstrip('\r\n')
+
         if content_to_write:
+            has_written_first_char = True
             logger.debug(f"output_text: keyboard.write '{content_to_write}'")
             keyboard.write(content_to_write)
             pending_buffer = trailing
@@ -102,14 +107,15 @@ async def _process_streaming(handler, role_config, content, matched_hotwords) ->
 
     # 如果模型没有任何输出，直接打出原文字
     if not chunks:
-        final_text = TextOutput.strip_punc(content)
-        logger.debug(f"output_text: keyboard.write '{final_text}' (降级)")
-        keyboard.write(final_text)
+        final_text = TextOutput.strip_punc(content).lstrip('\r\n')
+        if final_text:
+            logger.debug(f"output_text: keyboard.write '{final_text}' (降级)")
+            keyboard.write(final_text)
         return (final_text, 0, 0.0)
     
     # 如果 LLM 只输出标点，会被拦截，就要做补偿输出
     full_output = ''.join(chunks).strip()
-    if len(full_output) == 1 and full_output in Config.trash_punc:
+    if len(full_output) == 1 and full_output in Config.trash_punc and full_output != '\n':
         keyboard.write(full_output)
     
     return (TextOutput.strip_punc(polished_text), token_count, gen_time)
@@ -120,5 +126,8 @@ async def output_text(text: str, paste: bool = None):
     if paste:
         await paste_text(text, restore_clipboard=Config.restore_clip)
     else:
-        logger.debug(f"output_text: keyboard.write '{text}'")
-        keyboard.write(text)
+        clean_text = text.lstrip('\r\n')
+        if clean_text:
+            logger.debug(f"output_text: keyboard.write '{clean_text}'")
+            keyboard.write(clean_text)
+

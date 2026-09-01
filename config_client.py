@@ -56,6 +56,8 @@ class ClientConfig:
         'ChatGPT.exe',
         'Gemini.exe',
         'Code.exe',
+        'Antigravity.exe',
+        'electron.exe',
     ]  # 匹配时强制粘贴
 
     enter_apps   = [('happ.exe', 0.5), ('hexin.exe', 0.5)]  # (应用名, 延迟秒数) 输出完成后自动回车，如同花顺，输入股票名后，需要回车才能切换
@@ -85,8 +87,8 @@ class ClientConfig:
     enable_tray = True          # 客户端默认启用托盘图标功能
 
     # 历史记录配置
-    history_auto_clear_on_start = False  # 每次重启/启动客户端时是否自动清空历史记录
-    history_max_items = 0                # 历史记录最大保留条数 (0 表示全部保留/不限制条数，默认)
+    history_auto_clear_on_start = True  # 每次重启/启动客户端时是否自动清空历史记录
+    history_max_items = 20                # 历史记录最大保留条数 (0 表示全部保留/不限制条数，默认)
 
     # 日志配置
     log_level = 'DEBUG'          # 日志级别：'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'

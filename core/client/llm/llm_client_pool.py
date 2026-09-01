@@ -36,8 +36,10 @@ class ClientPool:
             else:
                 import httpx
                 from openai import OpenAI
-                # 检查是否为国内 API 端点；如果是国内服务（如 api.deepseek.com），默认跳过代理直连，避免梯子节点绕路海外
-                is_domestic = any(domain in (final_url or '').lower() for domain in ['deepseek.com', 'aliyun.com', 'baidubce.com', 'volces.com', 'bigmodel.cn', 'zhipuai.cn', 'minimax.chat'])
+                # 检查是否为国内 API 端点或厂商；如果是国内服务（如 智谱/DeepSeek/月之暗面/火山引擎 等），强制跳过代理直连，避免梯子节点绕路海外
+                domestic_providers = {'zhipu', 'deepseek', 'moonshot', 'volcengine', 'siliconflow', 'qwen', 'baichuan', 'minimax', 'yi', 'stepfun', 'doubao'}
+                domestic_domains = ['deepseek.com', 'aliyun.com', 'baidubce.com', 'volces.com', 'bigmodel.cn', 'zhipuai.cn', 'minimax.chat', 'moonshot.cn', 'siliconflow.cn', 'lingyiwanwu.com', 'stepfun.com']
+                is_domestic = (provider in domestic_providers) or any(domain in (final_url or '').lower() for domain in domestic_domains)
                 http_client = httpx.Client(timeout=timeout, trust_env=not is_domestic) if is_domestic else None
 
                 self._clients[cache_key] = OpenAI(

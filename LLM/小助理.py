@@ -4,7 +4,7 @@
 
 # ==================== 基本信息 ====================
 name = '小助理'                   # 角色名称（留空表示默认）
-enabled = True                           # 是否启用此角色
+enabled = False                           # 是否启用此角色
 
 # ==================== API 配置 ====================
 provider = 'lmstudio'                   # API 提供商：'ollama', 'openai', 'deepseek', 'moonshot', 'zhipu', 'claude', 'gemini'

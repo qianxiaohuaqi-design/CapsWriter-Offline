@@ -20,3 +20,20 @@
 (^句号[，。]?)|([，。]?句号$)       =    。
 (^问号[，。]?)|([，。]?问号$)       =    ？
 (?<=^)[，。]?回车[，。 ]?|(?<=回车)回车[，。 ]?|(?<=回车[，。 ])回车[，。 ]?|[，。]?回车[，。]?(?=回车)|[，。]?回车$ = \n
+
+# AI & Agent 专有名词替换规则
+扣德克斯     =   Codex
+科德克斯     =   Codex
+扣得克斯     =   Codex
+克劳德代码   =   Claude Code
+克劳德扣德   =   Claude Code
+克劳德       =   Claude
+迪普思克     =   DeepSeek
+深度思克     =   DeepSeek
+安提格拉维蒂 =   Antigravity
+安提格拉维提 =   Antigravity
+反重力       =   Antigravity
+欧拉玛       =   Ollama
+欧拉马       =   Ollama
+柯瑟         =   Cursor
+库瑟         =   Cursor

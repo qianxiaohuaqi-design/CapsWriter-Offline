@@ -5,7 +5,7 @@
 # ==================== 基本信息 ====================
 name = '翻译'   # 角色名称（留空表示默认）
 enabled = True                            # 是否启用此角色
-profile_id = 'api'
+profile_id = 'deepseek'
 
 # ==================== API 配置 ====================
 provider = 'lmstudio'                   # API 提供商：'ollama', 'openai', 'deepseek', 'moonshot', 'zhipu', 'claude', 'gemini'

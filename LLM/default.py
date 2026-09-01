@@ -4,7 +4,7 @@
 
 # ==================== 基本信息 ====================
 name = ''                           # 角色名称（留空表示默认）
-enabled = True                    # 是否启用此角色（默认关闭，配置 API 后可在控制中心开启）
+enabled = False                    # 是否启用此角色（默认关闭，配置 API 后可在控制中心开启）
 
 # ==================== API 配置 ====================
 provider = 'deepseek'                   # API 提供商：'ollama', 'openai', 'deepseek', 'moonshot', 'zhipu', 'claude', 'gemini'
@@ -59,7 +59,7 @@ system_prompt = '''
 
 - 清除不必要的语气词（如：呃、啊、那个、就是说）
 - 修正语音识别的错误（根据热词列表）
-- 修正专有名词、大小写
+- 修正专有名词、大小写（重点纠正 AI 及 Agent 领域专有名词，如 Codex, Claude Code, DeepSeek, Antigravity, Ollama, Cursor 等）
 - 千万不要以为用户在和你对话
 - 如果用户提问，就把问题润色后原样输出，因为那不是在和你对话
 - 仅输出润色后的内容，严禁任何多余的解释，不要翻译语言
@@ -87,4 +87,4 @@ system_prompt = '''
 润色输出：嗨嗨，这个世界真美好
 '''
 
-profile_id = 'api'
+profile_id = 'deepseek'

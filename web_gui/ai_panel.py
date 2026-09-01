@@ -62,12 +62,12 @@ def _provider_default_models(provider: str) -> list[str]:
 
 
 def _refresh_select_options(select, options: list[str], value: str | None = None) -> None:
-    options = _dedupe_models(options, value)
-    select.options = options
-    if value and value in options:
+    clean_options = _dedupe_models(options)
+    select.options = clean_options
+    if value and value in clean_options:
         select.value = value
     else:
-        select.value = options[0] if options else None
+        select.value = clean_options[0] if clean_options else None
     select.update()
 
 
@@ -211,15 +211,16 @@ def render_ai_panel() -> None:
                         default_url = ConfigManager.default_api_url(provider)
                         default_url_label.text = f'官方默认地址：{default_url or "未内置默认地址"}；填写 Base URL 会覆盖默认地址。'
 
-                def handle_provider_change(_) -> None:
+                def handle_provider_change(e) -> None:
+                    provider = e.value if hasattr(e, 'value') else provider_in.value
                     update_provider_hint()
                     api_url_in.value = ''
-                    model_state['models'] = _provider_default_models(provider_in.value)
+                    model_state['models'] = _provider_default_models(provider)
                     _refresh_select_options(default_model_in, model_state['models'])
                     model_count.text = f'当前模型列表：{len(model_state["models"])} 个'
                     ui.notify('服务商已切换，已清空旧地址并刷新模型列表。可重新拉取模型。', type='info')
 
-                provider_in.on('update:model-value', handle_provider_change)
+                provider_in.on_value_change(handle_provider_change)
                 update_provider_hint()
 
                 async def pull_models() -> None:
@@ -305,8 +306,13 @@ def render_ai_panel() -> None:
         is_new = role is None
         selected_profile = ConfigManager.get_llm_profile((role or {}).get('profile_id')) or active
         selected_profile_id = selected_profile['id'] if selected_profile else None
-        selected_model = (role or {}).get('model') or ((selected_profile or {}).get('default_model', ''))
-        model_options = _dedupe_models((selected_profile or {}).get('models'), selected_model)
+        profile_models = _dedupe_models((selected_profile or {}).get('models'))
+        raw_selected_model = (role or {}).get('model')
+        if raw_selected_model and raw_selected_model in profile_models:
+            selected_model = raw_selected_model
+        else:
+            selected_model = (selected_profile or {}).get('default_model') or (profile_models[0] if profile_models else '')
+        model_options = profile_models
         role_output_mode = _normalized_role_output_mode((role or {}).get('output_mode'))
         use_role_overlay_settings = role_output_mode != 'inherit'
         section_close_mode = ConfigManager.get_client_var('llm_role_preview_close_mode', 'auto')
@@ -341,10 +347,11 @@ def render_ai_panel() -> None:
 
                     def update_role_models(e) -> None:
                         profile = ConfigManager.get_llm_profile(e.value)
-                        models = _dedupe_models((profile or {}).get('models'), (profile or {}).get('default_model'))
-                        _refresh_select_options(model_select, models, (profile or {}).get('default_model'))
+                        models = _dedupe_models((profile or {}).get('models'))
+                        default_m = (profile or {}).get('default_model') or (models[0] if models else None)
+                        _refresh_select_options(model_select, models, default_m)
 
-                    profile_select.on('update:model-value', update_role_models)
+                    profile_select.on_value_change(update_role_models)
 
                     with ui.row().classes('items-center gap-5 flex-wrap'):
                         hotwords_switch = ui.switch('注入热词', value=(role or {}).get('enable_hotwords', False)).props('color=amber-8')
@@ -534,12 +541,19 @@ def render_ai_panel() -> None:
                     llm_switch.on_value_change(handle_enabled_change)
 
                 if profiles:
+                    cur_profile = selected_default or active
+                    profile_models = _dedupe_models((cur_profile or {}).get('models'))
+                    cfg_model = llm_cfg.get('model')
+                    if cfg_model and cfg_model in profile_models:
+                        initial_model = cfg_model
+                    else:
+                        initial_model = (cur_profile or {}).get('default_model') or (profile_models[0] if profile_models else None)
+
                     with ui.grid(columns=2).classes('w-full gap-5'):
-                        profile_select = ui.select(profile_options, value=(selected_default or active)['id'], label='使用 API 配置').classes('w-full')
-                        default_models = _dedupe_models((selected_default or {}).get('models'), llm_cfg.get('model'))
+                        profile_select = ui.select(profile_options, value=(cur_profile or {})['id'], label='使用 API 配置').classes('w-full')
                         model_select = ui.select(
-                            default_models,
-                            value=llm_cfg.get('model') or ((selected_default or {}).get('default_model', None)),
+                            profile_models,
+                            value=initial_model,
                             label='使用模型',
                             new_value_mode='add-unique',
                         ).classes('w-full')
@@ -554,8 +568,9 @@ def render_ai_panel() -> None:
 
                     def update_default_models(e) -> None:
                         profile = ConfigManager.get_llm_profile(e.value)
-                        models = _dedupe_models((profile or {}).get('models'), (profile or {}).get('default_model'))
-                        _refresh_select_options(model_select, models, (profile or {}).get('default_model'))
+                        models = _dedupe_models((profile or {}).get('models'))
+                        default_m = (profile or {}).get('default_model') or (models[0] if models else None)
+                        _refresh_select_options(model_select, models, default_m)
                         save_default_binding()
 
                     profile_select.on_value_change(update_default_models)
