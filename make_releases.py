@@ -5,7 +5,7 @@ CapsWriter-Offline 商业级解压即用发行包打包脚本
 构建极简清爽的发版解压目录结构：
 - CapsWriter.exe            (全局唯一可执行启动主程序)
 - readme.md                 (使用说明文档)
-- hot.txt / hot-rule.txt    (用户热词配置文件)
+- hot.txt / hot-rule.txt    (干净标准的热词模版，彻底擦除作者个性化热词与私人正则)
 - config_client.py / config_server.py (运行配置文件)
 - models/                   (语音识别模型文件夹，扁平单层结构，包含实测 SenseVoice 模型及单一说明文件)
 - internal/                 (收纳所有底层代码、组件、图像资源与二进制依赖库，隐藏不展示，已清空私密 API Key 与隐私数据)
@@ -37,13 +37,45 @@ MODEL_README_CONTENT = """CapsWriter-Offline 离线语音识别模型说明：
 下载后解压将模型文件夹放入本 models/ 目录中即可。
 """
 
+CLEAN_HOT_TXT = """# 客户端热词文件
+# 使用音素 RAG 匹配，支持中英文混合
+# 具备强制性，相似度高于阈值的一定会被替换
+# 井号开头的行为注释，会被忽略
+# 每行一个热词，可以用 | 分割添加多个别名
+# 详细说明见 docs/热词功能如何使用.md
+
+# ====== 示例热词 ======
+CapsWriter | Caps Rider
+Paraformer | performer
+SenseVoice-small
+"""
+
+CLEAN_HOT_RULE_TXT = """# 在此文件放置自定义规则，每行一条正则表达式，
+# 左边是查找模式，右边是替换式，中间用带空格的等号分开
+# 以 # 开头的会被忽略，可用作注释
+# 文本两边的空格会被省略，在替换侧可用 \s 表示空格
+# 例如：
+
+毫安时     =      mAh
+赫兹      =      Hz
+伏特      =      V
+"""
+
+CLEAN_HOT_SERVER_TXT = """# 服务端热词文件
+# 每行一个热词，井号开头的行为注释，会被忽略
+
+# ====== 示例热词 ======
+CapsWriter
+SenseVoice
+"""
+
 
 def assemble_clean_release_directory():
-    """装配商业级极简发布运行目录，并彻底脱敏私密隐私数据"""
+    """装配商业级极简发布运行目录，并彻底脱敏私密隐私数据与个人热词"""
     if not TARGET_DIR.exists():
         raise FileNotFoundError("未找到编译输出目录 dist/CapsWriter-Offline，请先运行 PyInstaller 构建。")
 
-    print("\n[1/3] 正在装配极简发版运行目录并清理隐私凭据...")
+    print("\n[1/3] 正在装配极简发版运行目录并清理隐私凭据与个人热词...")
     INTERNAL_DIR.mkdir(parents=True, exist_ok=True)
 
     # 1. 将所有源码与资源模块统一收纳放入 internal/ 隐藏内部目录
@@ -71,7 +103,6 @@ def assemble_clean_release_directory():
     # 隐私脱敏处理：清空 internal/web_gui 中的私密 API Key、历史记录与个性化私密配置
     internal_webgui = INTERNAL_DIR / 'web_gui'
     if internal_webgui.exists():
-        # 清空 private_config.json
         clean_private_config = {
             "llm_api_keys": {},
             "llm_role_api_keys": {},
@@ -81,26 +112,26 @@ def assemble_clean_release_directory():
             json.dumps(clean_private_config, indent=2, ensure_ascii=False),
             encoding='utf-8'
         )
-        # 清除历史记录与私密文件
         for history_file in ['input_history.jsonl', 'input_history_cleared_at.txt']:
             if (internal_webgui / history_file).exists():
                 (internal_webgui / history_file).unlink()
 
-    # 2. 根目录仅放置【配置文件 + 用户文档 + 模型目录 + 唯一的 CapsWriter.exe】
+    # 2. 根目录仅放置【配置文件 + 用户文档 + 模型目录 + 唯一的 CapsWriter.exe】（已去除 LICENSE 等非必要杂物）
     user_root_files = [
         'config_client.py',
         'config_server.py',
-        'hot.txt',
-        'hot-server.txt',
-        'hot-rule.txt',
         'readme.md',
-        'LICENSE',
     ]
     for file in user_root_files:
         src_file = BASE_DIR / file
         dest_file = TARGET_DIR / file
         if src_file.exists():
             shutil.copy2(src_file, dest_file)
+
+    # 写入纯净的标准初始热词模版（彻底擦除作者个人热词偏好、个人别名与正则规则）
+    (TARGET_DIR / 'hot.txt').write_text(CLEAN_HOT_TXT, encoding='utf-8')
+    (TARGET_DIR / 'hot-rule.txt').write_text(CLEAN_HOT_RULE_TXT, encoding='utf-8')
+    (TARGET_DIR / 'hot-server.txt').write_text(CLEAN_HOT_SERVER_TXT, encoding='utf-8')
 
     # 3. 彻底扁平化 models/ 目录（拍平嵌套子目录，只留单层 models/SenseVoice-Small/ 且无重复 TXT）
     models_src = BASE_DIR / 'models'
@@ -109,13 +140,12 @@ def assemble_clean_release_directory():
         shutil.rmtree(models_dest, ignore_errors=True)
     models_dest.mkdir(parents=True, exist_ok=True)
 
-    # 精确拷贝 SenseVoice-Small 核心 ONNX 权重文件，直接拉平至单层子目录 models/SenseVoice-Small/
+    # 仅拷贝 SenseVoice-Small 核心 ONNX 权重文件
     sensevoice_src = models_src / 'SenseVoice-Small'
     sensevoice_dest = models_dest / 'SenseVoice-Small'
     sensevoice_dest.mkdir(parents=True, exist_ok=True)
 
     if sensevoice_src.exists():
-        # 寻找内部存放 onnx 的实际目录或根文件
         for root, dirs, files in os.walk(sensevoice_src):
             for file in files:
                 if file.endswith(('.onnx', '.model', '.json', '.txt')) and not file.endswith('下载链接.txt'):
@@ -126,22 +156,23 @@ def assemble_clean_release_directory():
     # 根目录仅保留单个标准说明 TXT
     (models_dest / '模型下载与说明.txt').write_text(MODEL_README_CONTENT, encoding='utf-8')
 
-    # 4. 彻底清理根目录下所有冗余的 .bat, .vbs 等多余启动方式及测试脚本
-    redundant_launchers = [
+    # 4. 彻底清理根目录下所有冗余的 .bat, .vbs, LICENSE 等杂文件
+    redundant_files = [
         '启动 CapsWriter 离线语音输入.bat',
         '启动 CapsWriter 智能控制中心.vbs',
         '运行自动化自测试与故障诊断.bat',
+        'LICENSE',
         'build.spec',
         'build-client.spec',
         'make_releases.py',
         'zip_release.py',
     ]
-    for r_file in redundant_launchers:
+    for r_file in redundant_files:
         r_path = TARGET_DIR / r_file
         if r_path.exists():
             r_path.unlink()
 
-    print("✅ 极简运行目录装配完成！隐私 Key 已彻底清空，models/ 已拉平单层结构，根目录仅包含【CapsWriter.exe】。")
+    print("✅ 极简运行目录装配完成！已擦除作者个人热词与规则，剔除 LICENSE 杂物，根目录仅保留【CapsWriter.exe】与干净模版。")
 
 
 def build_zip_package(output_zip: Path, is_lite: bool = False):
@@ -185,10 +216,8 @@ def main():
     print("CapsWriter-Offline 极简商业发布包自动打包生成器")
     print("=" * 60)
 
-    # 1. 装配极简发版目录并脱敏
     assemble_clean_release_directory()
 
-    # 2. 输出标准的 CapsWriter-Full.zip 与 CapsWriter-Lite.zip
     full_zip = DIST_DIR / "CapsWriter-Full.zip"
     lite_zip = DIST_DIR / "CapsWriter-Lite.zip"
 
