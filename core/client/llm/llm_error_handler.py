@@ -40,35 +40,66 @@ def get_user_friendly_message(error: Exception) -> str:
 
 def should_fallback_to_original(error: Exception) -> bool:
     """
-    判断是否应该降级到原文本
-
-    某些错误（如认证失败、连接失败）应该提示用户而不是降级
-    其他错误（如超时、速率限制）可以降级
-
-    Args:
-        error: 异常对象
-
-    Returns:
-        True 表示应该降级到原文本，False 表示应该提示错误
+    判断是否应该降级到原文本（始终返回 True，确保任何异常下绝不吞字、安全回退用户语音识别原文）
     """
-    # 认证失败：必须提示用户配置 API Key
-    if isinstance(error, AuthenticationErrorWrapper):
-        return False
-
-    # 连接失败：提示用户检查网络和 API 地址
-    if isinstance(error, (ConnectionErrorWrapper, APIConnectionError)):
-        return False
-
-    # API 响应错误：提示用户检查配置
-    if isinstance(error, (APIResponseErrorWrapper, APIResponseError)):
-        return False
-
-    # 超时和速率限制：可以降级到原文本
-    if isinstance(error, (TimeoutErrorWrapper, RateLimitErrorWrapper)):
-        return True
-
-    # 其他异常：保守策略，降级
     return True
+
+
+def get_fallback_reason(error: Exception) -> str:
+    """
+    提取标准的降级原因类别 ('timeout' | 'http_429' | 'http_401' | 'http_500' | 'empty_response' | 'connection_error' 等)
+    """
+    if error is None:
+        return "empty_response"
+
+    # 1. 空响应
+    if isinstance(error, APIResponseError) and "返回空内容" in str(error):
+        return "empty_response"
+
+    # 2. 超时
+    if isinstance(error, TimeoutErrorWrapper):
+        return "timeout"
+    err_type_name = type(error).__name__.lower()
+    if 'timeout' in err_type_name:
+        return "timeout"
+
+    # 3. HTTP 状态码
+    status_code = getattr(error, 'status_code', None)
+    if hasattr(error, 'response') and hasattr(error.response, 'status_code'):
+        status_code = error.response.status_code
+    if hasattr(error, 'original_error'):
+        orig = error.original_error
+        if hasattr(orig, 'status_code'):
+            status_code = orig.status_code
+        elif hasattr(orig, 'response') and hasattr(orig.response, 'status_code'):
+            status_code = orig.response.status_code
+
+    if isinstance(error, RateLimitErrorWrapper) or status_code == 429 or '429' in str(error):
+        return "http_429"
+    if isinstance(error, AuthenticationErrorWrapper) or status_code == 401 or '401' in str(error):
+        return "http_401"
+    if status_code in (400, 403, 500, 502, 503, 504):
+        return f"http_{status_code}"
+    if '500' in str(error):
+        return "http_500"
+    if '502' in str(error):
+        return "http_502"
+    if '503' in str(error):
+        return "http_503"
+    if '504' in str(error):
+        return "http_504"
+    if '400' in str(error):
+        return "http_400"
+    if '403' in str(error):
+        return "http_403"
+
+    # 4. 连接异常
+    if isinstance(error, (ConnectionErrorWrapper, APIConnectionError)):
+        return "connection_error"
+    if 'connect' in err_type_name or 'network' in err_type_name or 'socket' in err_type_name:
+        return "connection_error"
+
+    return "connection_error"
 
 
 def show_error_notification(error: Exception, role_name: str = "LLM"):
@@ -111,9 +142,9 @@ def show_error_notification(error: Exception, role_name: str = "LLM"):
 
 
 def handle_llm_error(error: Exception, original_text: str, role_name: str = "LLM",
-                     fallback_text: Optional[str] = None) -> Tuple[str, bool]:
+                     fallback_text: Optional[str] = None) -> Tuple[str, bool, str]:
     """
-    统一的 LLM 错误处理入口
+    统一的 LLM 错误处理入口，保证任何错误下平滑降级到原始文本，绝不丢字
 
     Args:
         error: 异常对象
@@ -122,15 +153,9 @@ def handle_llm_error(error: Exception, original_text: str, role_name: str = "LLM
         fallback_text: 降级时使用的文本（None 则使用 original_text）
 
     Returns:
-        (输出文本, 是否成功)
+        (输出文本, 是否成功, fallback_reason)
     """
-    # 判断是否应该降级
-    if should_fallback_to_original(error):
-        # 降级策略：使用原文本或 fallback_text
-        result = fallback_text if fallback_text is not None else original_text
-        logger.info(f"[{role_name}] 处理失败，降级到原文本: {error}")
-        return (result, False)
-    else:
-        # 非降级策略：显示错误通知，返回空字符串
-        show_error_notification(error, role_name)
-        return ("", False)
+    fallback_reason = get_fallback_reason(error)
+    result = fallback_text if fallback_text is not None else original_text
+    logger.warning(f"[{role_name}] LLM 处理失败 ({fallback_reason})，优雅降级到原文本: {error}")
+    return (result, False, fallback_reason)

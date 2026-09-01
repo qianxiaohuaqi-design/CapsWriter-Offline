@@ -26,12 +26,14 @@ class RoleConfig:
     api_url: str = ''                             # API 地址
     api_key: str = ''                             # API Key
     model: str = 'gemma3:4b'                      # 模型名称
+    profile_id: str = ''                          # 绑定的 API 档案 ID
+    capabilities: Dict[str, Any] = field(default_factory=lambda: {'thinking_control': False})  # 模型能力声明
 
     # 上下文管理
     max_context_length: int = 4096                # 最大上下文长度（token 数）
 
     # 功能配置
-    enable_thinking: bool = False                 # 是否启用思考（仅 Ollama 支持）
+    enable_thinking: bool = False                 # 是否启用思考（仅支持思考控制的模型/提供商有效）
     enable_history: bool = False                  # 是否保留对话历史
     enable_hotwords: bool = False                 # 是否读取潜在热词列表
     enable_read_selection: bool = False           # 是否读取鼠标所选文字（通过 Ctrl+C）

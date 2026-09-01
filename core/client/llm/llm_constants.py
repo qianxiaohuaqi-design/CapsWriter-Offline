@@ -48,6 +48,27 @@ class WatcherConstants:
 # ==================== 角色配置默认值 ====================
 
 
+# ==================== 分阶段超时配置 ====================
+class TimeoutConfig:
+    """分阶段超时策略配置（秒）"""
+    CONNECT = 5.0          # 建立连接超时
+    WRITE = 10.0           # 写入请求数据超时
+    READ = 30.0            # 普通读取响应超时
+    STREAM_READ = 60.0     # 流式读取响应超时
+    POOL = 5.0             # 连接池等待超时
+
+    @classmethod
+    def get_httpx_timeout(cls, is_stream: bool = False):
+        import httpx
+        read_timeout = cls.STREAM_READ if is_stream else cls.READ
+        return httpx.Timeout(
+            connect=cls.CONNECT,
+            write=cls.WRITE,
+            read=read_timeout,
+            pool=cls.POOL,
+        )
+
+
 # ==================== API 配置 ====================
 class APIConfig:
     """API 提供商配置"""
@@ -75,23 +96,26 @@ class APIConfig:
         'cerebras': '',
     }
 
-    # 请求超时配置（秒）
-    # 本地模型第一次可能需要载入，时间稍长
-    # 超过10秒可以认为网络有问题
+    # 请求超时配置（秒）- 分阶段超时策略
     DEFAULT_TIMEOUTS = {
-        'ollama': 2.0,       # 本地模型
-        'lmstudio': 2.0,     # LM Studio 本地模型
-        'openai': 2.0,       # OpenAI API
-        'deepseek': 2.0,     # DeepSeek API
-        'moonshot': 2.0,     # Moonshot API
-        'zhipu': 2.0,        # 智谱 API
-        'cerebras': 2.0,     # Cerebras API
-        'claude': 2.0,       # Claude API
-        'gemini': 2.0,       # Gemini API
+        'ollama': 30.0,       # 本地模型
+        'lmstudio': 30.0,     # LM Studio 本地模型
+        'openai': 30.0,       # OpenAI API
+        'deepseek': 30.0,     # DeepSeek API
+        'moonshot': 30.0,     # Moonshot API
+        'zhipu': 30.0,        # 智谱 API
+        'cerebras': 30.0,     # Cerebras API
+        'claude': 30.0,       # Claude API
+        'gemini': 30.0,       # Gemini API
+        'volcengine': 30.0,   # 火山引擎 API
     }
 
     # 默认超时（用于未列出的 provider）
-    DEFAULT_TIMEOUT = 2.0
+    DEFAULT_TIMEOUT = 30.0
+
+    @classmethod
+    def get_staged_timeout(cls, provider: str = '', is_stream: bool = False):
+        return TimeoutConfig.get_httpx_timeout(is_stream=is_stream)
 
 
 # ==================== Token 估算工具 ====================

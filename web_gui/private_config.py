@@ -43,9 +43,37 @@ def set_llm_api_key(provider: str, api_key: str) -> None:
     save_private_config(data)
 
 
-def get_llm_role_api_key(role_id: str, provider: str, fallback: str = '') -> str:
+def resolve_llm_api_key(role_id: str = '', profile_id: str = '', provider: str = '', fallback: str = '') -> str:
+    """
+    统一 API Key 优先级解析：
+    Role-specific Key (角色私有 Key) > Bound Profile Key (绑定档案 Key) > Provider Global Key (全局提供商 Key) > fallback
+    """
     data = load_private_config()
-    return data.get('llm_role_api_keys', {}).get(role_id) or get_llm_api_key(provider, fallback)
+
+    # 1. 角色私有 Key
+    if role_id:
+        role_key = data.get('llm_role_api_keys', {}).get(role_id)
+        if role_key and role_key.strip():
+            return role_key.strip()
+
+    # 2. 绑定档案 Key
+    if profile_id:
+        profile_key = data.get('llm_profile_api_keys', {}).get(profile_id)
+        if profile_key and profile_key.strip():
+            return profile_key.strip()
+
+    # 3. 全局提供商 Key
+    if provider:
+        provider_key = data.get('llm_api_keys', {}).get(provider)
+        if provider_key and provider_key.strip():
+            return provider_key.strip()
+
+    # 4. 代码中指定的 fallback Key
+    return fallback.strip() if fallback else ''
+
+
+def get_llm_role_api_key(role_id: str, provider: str, fallback: str = '', profile_id: str = '') -> str:
+    return resolve_llm_api_key(role_id=role_id, profile_id=profile_id, provider=provider, fallback=fallback)
 
 
 def set_llm_role_api_key(role_id: str, api_key: str) -> None:

@@ -28,13 +28,29 @@ from core.client.audio.file_manager import AudioFileManager
 from core.client.llm.llm_write_md import write_llm_md
 from core.client.output.input_history import append_input_history
 
+import os
+import threading
+
 CONFIG_CLIENT_PATH = Path(__file__).resolve().parents[3] / 'config_client.py'
+_CONFIG_AST_CACHE: dict[str, tuple[int, ast.AST]] = {}
+_CONFIG_AST_LOCK = threading.Lock()
 
 
 def get_live_client_config(var_name: str, default):
-    """Read lightweight user preferences without restarting the client."""
+    """Read lightweight user preferences without restarting the client (with AST mtime caching)."""
     try:
-        tree = ast.parse(CONFIG_CLIENT_PATH.read_text(encoding='utf-8'))
+        if not CONFIG_CLIENT_PATH.exists():
+            return default
+        path_str = str(CONFIG_CLIENT_PATH)
+        mtime_ns = os.stat(path_str).st_mtime_ns
+        with _CONFIG_AST_LOCK:
+            if path_str in _CONFIG_AST_CACHE and _CONFIG_AST_CACHE[path_str][0] == mtime_ns:
+                tree = _CONFIG_AST_CACHE[path_str][1]
+            else:
+                content = CONFIG_CLIENT_PATH.read_text(encoding='utf-8-sig')
+                tree = ast.parse(content)
+                _CONFIG_AST_CACHE[path_str] = (mtime_ns, tree)
+
         for node in ast.walk(tree):
             if (
                 isinstance(node, (ast.Assign, ast.AnnAssign))

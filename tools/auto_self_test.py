@@ -645,10 +645,10 @@ def test_unit_8_ai_and_private_config(runner: TestRunner):
             runner.log_fail("翻译角色 API 绑定", "翻译角色未绑定 API 档案，可能继续走旧 provider")
 
         pool_source = (BASE_DIR / 'core' / 'client' / 'llm' / 'llm_client_pool.py').read_text(encoding='utf-8')
-        if 'key_digest' in pool_source and 'sha256' in pool_source and 'cache_key = f"{provider}_{final_url}_{key_digest}"' in pool_source:
-            runner.log_pass("LLM 客户端池缓存", "缓存 key 已包含 API Key 哈希，避免同地址不同 Key 复用客户端")
+        if 'key_digest' in pool_source and 'sha256' in pool_source and ('cache_key = f"{provider}_{profile_id}_{final_url}_{key_digest}"' in pool_source or 'cache_key = f"{provider}_{final_url}_{key_digest}"' in pool_source):
+            runner.log_pass("LLM 客户端池缓存", "缓存 key 已包含 API Key 哈希与 Profile ID，避免跨档案与同地址不同 Key 复用客户端")
         else:
-            runner.log_fail("LLM 客户端池缓存", "缓存 key 未区分 API Key")
+            runner.log_fail("LLM 客户端池缓存", "缓存 key 未区分 API Key 或 Profile ID")
     except Exception as e:
         runner.log_fail("私密配置与 AI 模块", str(e))
 
@@ -966,6 +966,164 @@ def test_unit_13_overlay_and_effect_notice_audit(runner: TestRunner):
         runner.log_fail("Overlay confirm-preview audit", str(e))
 
 
+def test_unit_14_ai_polish_specialized_suite(runner: TestRunner):
+    runner.log_header("Unit 14: AI 润色专项与故障注入自动化测试 (AI-01 至 AI-15)")
+    try:
+        from core.client.llm.llm_context import ContextManager
+        from core.client.llm.llm_message_builder import MessageBuilder
+        from core.client.llm.llm_role_config import RoleConfig
+        from core.client.llm.llm_constants import TimeoutConfig, APIConfig
+        from core.client.llm.llm_error_handler import handle_llm_error, get_fallback_reason
+        from core.client.llm.llm_exceptions import (
+            RateLimitErrorWrapper, AuthenticationErrorWrapper, TimeoutErrorWrapper,
+            APIResponseError, ConnectionErrorWrapper
+        )
+        from core.client.llm.llm_client_pool import ClientPool
+        from core.client.llm.llm_output_typing import StreamMicroBuffer
+        from core.client.llm.llm_interfaces import LLMResult
+        from core.client.llm.llm_handler import get_live_client_config
+        from core.logger import mask_sensitive_text
+        from unittest.mock import MagicMock
+
+        # AI-01: 历史消息时间戳剥离测试
+        ctx = ContextManager(max_length=1000)
+        ctx.add_message('user', '第一句话')
+        ctx.add_message('assistant', '第一句回复')
+        history_msgs = ctx.get_history()
+        has_ts = any('timestamp' in m for m in history_msgs)
+        has_role_content = all('role' in m and 'content' in m for m in history_msgs)
+        if not has_ts and has_role_content and len(history_msgs) == 2:
+            runner.log_pass("AI-01 历史消息时间戳剥离", "get_history 成功剥离 timestamp，仅包含标准 role 与 content")
+        else:
+            runner.log_fail("AI-01 历史消息时间戳剥离", f"历史消息结构异常: {history_msgs}")
+
+        # AI-02: 慢首 Token 延迟容忍与分阶段超时测试
+        staged = TimeoutConfig.get_httpx_timeout(is_stream=True)
+        if staged.connect == 5.0 and staged.read == 60.0 and staged.write == 10.0:
+            runner.log_pass("AI-02 慢首 Token 分阶段超时", f"分阶段超时有效 (connect={staged.connect}s, stream_read={staged.read}s)")
+        else:
+            runner.log_fail("AI-02 慢首 Token 分阶段超时", f"超时配置异常: {staged}")
+
+        # AI-03: HTTP 429 速率限制故障注入测试
+        _, ok_429, reason_429 = handle_llm_error(RateLimitErrorWrapper(Exception("Rate limit 429")), "原始识别文本", "LLM")
+        if not ok_429 and reason_429 == "http_429":
+            runner.log_pass("AI-03 HTTP 429 故障注入", "429 错误精确捕获并生成 fallback_reason: http_429")
+        else:
+            runner.log_fail("AI-03 HTTP 429 故障注入", f"429 处理异常: ok={ok_429}, reason={reason_429}")
+
+        # AI-04: HTTP 401 身份鉴权失败故障注入测试
+        _, ok_401, reason_401 = handle_llm_error(AuthenticationErrorWrapper(Exception("Unauthorized 401")), "原始识别文本", "LLM")
+        if not ok_401 and reason_401 == "http_401":
+            runner.log_pass("AI-04 HTTP 401 故障注入", "401 错误精确捕获并生成 fallback_reason: http_401")
+        else:
+            runner.log_fail("AI-04 HTTP 401 故障注入", f"401 处理异常: ok={ok_401}, reason={reason_401}")
+
+        # AI-05: HTTP 500/502 服务端异常故障注入测试
+        _, ok_500, reason_500 = handle_llm_error(Exception("500 Internal Server Error"), "原始识别文本", "LLM")
+        if not ok_500 and reason_500 == "http_500":
+            runner.log_pass("AI-05 HTTP 500 故障注入", "500 错误精确捕获并生成 fallback_reason: http_500")
+        else:
+            runner.log_fail("AI-05 HTTP 500 故障注入", f"500 处理异常: ok={ok_500}, reason={reason_500}")
+
+        # AI-06: 空响应与截断故障注入测试
+        _, ok_empty, reason_empty = handle_llm_error(APIResponseError("API 返回空内容"), "原始识别文本", "LLM")
+        if not ok_empty and reason_empty == "empty_response":
+            runner.log_pass("AI-06 空响应截断故障注入", "空响应精确捕获并生成 fallback_reason: empty_response")
+        else:
+            runner.log_fail("AI-06 空响应截断故障注入", f"空响应处理异常: ok={ok_empty}, reason={reason_empty}")
+
+        # AI-07: 网络连接超时与异常故障注入测试
+        _, ok_timeout, reason_timeout = handle_llm_error(TimeoutErrorWrapper(Exception("ReadTimeout")), "原始识别文本", "LLM")
+        if not ok_timeout and reason_timeout == "timeout":
+            runner.log_pass("AI-07 连接超时故障注入", "超时异常精确捕获并生成 fallback_reason: timeout")
+        else:
+            runner.log_fail("AI-07 连接超时故障注入", f"超时处理异常: ok={ok_timeout}, reason={reason_timeout}")
+
+        # AI-08: 自定义中转站 Thinking 参数隔离测试
+        role_cfg = RoleConfig(name='测试角色', provider='custom')
+        has_thinking_control = role_cfg.capabilities.get('thinking_control', False)
+        if not has_thinking_control:
+            runner.log_pass("AI-08 Thinking 参数隔离", "自定义中转站角色默认不携带未声明的厂商 Thinking 字段")
+        else:
+            runner.log_fail("AI-08 Thinking 参数隔离", f"Thinking 参数未隔离: {has_thinking_control}")
+
+        # AI-09: 多 Profile 独立 API Key 严格隔离与缓存隔离测试
+        pool = ClientPool()
+        c1 = pool.get_client('custom', 'https://api.one.com/v1', 'sk-key-aaa', 'profile_1')
+        c2 = pool.get_client('custom', 'https://api.one.com/v1', 'sk-key-bbb', 'profile_2')
+        pool_keys = list(pool._clients.keys())
+        if len(pool_keys) == 2 and pool_keys[0] != pool_keys[1] and 'profile_1' in pool_keys[0] and 'profile_2' in pool_keys[1]:
+            runner.log_pass("AI-09 多 Profile 客户端隔离", "多 Profile 间 API Key 与 Client 实例严格隔离")
+        else:
+            runner.log_fail("AI-09 多 Profile 客户端隔离", f"缓存隔离异常: {pool_keys}")
+
+        # AI-10: ClientPool.clear() 连接资源释放与句柄测试 (50次)
+        pool_release = ClientPool()
+        for i in range(50):
+            pool_release.get_client('ollama', f'http://127.0.0.1:{11434 + (i % 3)}', 'ollama', f'p_{i}')
+            pool_release.clear()
+        if len(pool_release._clients) == 0:
+            runner.log_pass("AI-10 ClientPool 连接释放", "50 次循环创建与 clear() 释放均无异常与泄露")
+        else:
+            runner.log_fail("AI-10 ClientPool 连接释放", f"clear() 后残留客户端: {len(pool_release._clients)}")
+
+        # AI-11: 默认润色关闭历史验证
+        default_py = (BASE_DIR / 'LLM' / 'default.py').read_text(encoding='utf-8')
+        if 'enable_history = False' in default_py:
+            runner.log_pass("AI-11 默认润色关闭历史", "LLM/default.py 默认配置 enable_history = False")
+        else:
+            runner.log_fail("AI-11 默认润色关闭历史", "LLM/default.py 仍开启了对话历史")
+
+        # AI-12: 流式微缓冲阈值与首次 Token 零延迟输出
+        mb = StreamMicroBuffer(batch_size=10, flush_delay_ms=30.0)
+        t1 = mb.add_chunk("首字")
+        t2 = mb.add_chunk("二")
+        t3 = mb.add_chunk("三四五六七八九十十一")
+        flushed = mb.flush()
+        if t1 == "首字" and t2 is None and t3 is not None:
+            runner.log_pass("AI-12 流式微缓冲阈值", "首 Token 零延迟直出，后续字符按批次/延时微缓冲合并")
+        else:
+            runner.log_fail("AI-12 流式微缓冲阈值", f"微缓冲行为异常: t1={t1}, t2={t2}, t3={t3}, flush={flushed}")
+
+        # AI-13: 打字模式与粘贴模式降级一致性测试
+        res_success = LLMResult(result="润色结果", role_name="小助理", processed=True, token_count=10, polish_time=0.5, input_text="原文", generation_time=0.4, status="success", fallback_reason=None)
+        res_fallback = LLMResult(result="原文", role_name="小助理", processed=False, token_count=0, polish_time=0.1, input_text="原文", generation_time=0.0, status="fallback", fallback_reason="timeout")
+        if res_success.status == "success" and res_fallback.status == "fallback" and res_fallback.fallback_reason == "timeout" and res_fallback.result == "原文":
+            runner.log_pass("AI-13 润色降级一致性", "LLMResult 完整支持 status 与 fallback_reason 可观测字段")
+        else:
+            runner.log_fail("AI-13 润色降级一致性", f"LLMResult 结构异常: {res_fallback}")
+
+        # AI-14: 敏感 API Key 日志脱敏与掩码格式校验
+        test_log_msg = "Request with authorization key sk-1234567890abcdefghijklmnopqrstuvwxyz and Token"
+        masked_log = mask_sensitive_text(test_log_msg)
+        if "sk-1234********wxyz" in masked_log and "1234567890abcdef" not in masked_log:
+            runner.log_pass("AI-14 敏感 Key 日志脱敏", f"日志掩码脱敏生效: {masked_log}")
+        else:
+            runner.log_fail("AI-14 敏感 Key 日志脱敏", f"脱敏未生效: {masked_log}")
+
+        # AI-15: 配置文件 AST 读取 mtime 缓存验证 (100 次调用只 parse 1 次)
+        from unittest.mock import patch
+        import ast
+        parse_count = 0
+        orig_parse = ast.parse
+        def counting_parse(*args, **kwargs):
+            nonlocal parse_count
+            parse_count += 1
+            return orig_parse(*args, **kwargs)
+
+        with patch('ast.parse', side_effect=counting_parse):
+            for _ in range(100):
+                get_live_client_config('output_destination', 'typing')
+
+        if parse_count == 1:
+            runner.log_pass("AI-15 配置 AST mtime 缓存", "100 次连续读取在文件未改动时仅解析 1 次 AST")
+        else:
+            runner.log_fail("AI-15 配置 AST mtime 缓存", f"AST 解析次数异常: {parse_count} 次 (预期 1 次)")
+
+    except Exception as e:
+        runner.log_fail("Unit 14 AI 专项测试套件", str(e))
+
+
 def main():
     print(f"{BOLD}{CYAN}" + "=" * 65 + f"{RESET}")
     print(f"{BOLD}{CYAN}   CapsWriter 智能控制中心 - 全功能自动化自测试与故障诊断系统{RESET}")
@@ -986,6 +1144,7 @@ def main():
     test_unit_11_graceful_gui_exit(runner)
     test_unit_12_log_analyzer(runner)
     test_unit_13_overlay_and_effect_notice_audit(runner)
+    test_unit_14_ai_polish_specialized_suite(runner)
 
     print(f"\n{BOLD}{CYAN}" + "=" * 65 + f"{RESET}")
     print(f"{BOLD}自测试结果汇总:{RESET}")

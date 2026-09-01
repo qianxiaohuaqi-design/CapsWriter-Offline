@@ -62,12 +62,23 @@ class MessageBuilder:
                 "content": role_config.system_prompt
             })
 
-        # 2. 对话历史
+        # 2. 对话历史（严格清洗，确保仅包含 role 和 content 两个标准字段）
         if context_manager:
-            if hasattr(context_manager, 'history') and isinstance(context_manager.history, list):
-                messages.extend(context_manager.history)
+            raw_history = []
+            if hasattr(context_manager, 'get_history') and callable(context_manager.get_history):
+                raw_history = context_manager.get_history()
+            elif hasattr(context_manager, 'history') and isinstance(context_manager.history, list):
+                raw_history = context_manager.history
             elif isinstance(context_manager, list):
-                messages.extend(context_manager)
+                raw_history = context_manager
+
+            if isinstance(raw_history, list):
+                for msg in raw_history:
+                    if isinstance(msg, dict) and 'role' in msg and 'content' in msg:
+                        messages.append({
+                            'role': str(msg['role']),
+                            'content': msg['content']
+                        })
 
         # 3. 用户内容构建 (集中式构建，方便管理格式)
         context_parts = []

@@ -43,11 +43,12 @@ class ContextManager:
             logger.info("对话历史已清除")
 
     def get_history(self) -> List[Dict]:
-        """获取对话历史"""
+        """获取对话历史（严格过滤只保留 role 与 content 字段，完全剥离 timestamp 等内部元数据）"""
         with self._lock:
             return [
                 {'role': msg['role'], 'content': msg['content']}
                 for msg in self.history
+                if isinstance(msg, dict) and 'role' in msg and 'content' in msg
             ]
 
     def _estimate_tokens(self, text: str) -> int:
@@ -62,7 +63,7 @@ class ContextManager:
         2. 保留 20% 空间给模型思考输出
         3. 从最早的消息开始删除，优先保留最近的对话
         """
-        if not self.history:
+        if not self.history or self.max_length <= 0:
             return
 
         # 计算当前历史的总 token 数
@@ -78,8 +79,9 @@ class ContextManager:
         if total_tokens <= target_tokens:
             return
 
+        usage_pct = (total_tokens / self.max_length * 100) if self.max_length > 0 else 0.0
         threshold_percent = int(ContextConstants.TRIM_THRESHOLD_RATIO * 100)
-        logger.info(f"[上下文裁剪] 当前 {total_tokens} tokens ({total_tokens/self.max_length*100:.1f}%)，触发清理（阈值：{target_tokens} tokens, {threshold_percent}%）")
+        logger.info(f"[上下文裁剪] 当前 {total_tokens} tokens ({usage_pct:.1f}%)，触发清理（阈值：{target_tokens} tokens, {threshold_percent}%）")
 
         # 从头部（最旧的消息）开始删除，直到满足阈值限制
         removed_count = 0
@@ -93,5 +95,6 @@ class ContextManager:
         # 调试信息：打印裁剪结果
         if len(self.history) > 0:
             final_tokens = sum(self._estimate_tokens(msg['content']) for msg in self.history)
+            final_pct = (final_tokens / self.max_length * 100) if self.max_length > 0 else 0.0
             logger.info(f"[上下文裁剪] 已删除 {removed_count} 条旧消息，保留 {len(self.history)} 条消息")
-            logger.info(f"[上下文裁剪] 当前约 {final_tokens} tokens ({final_tokens/self.max_length*100:.1f}%)，剩余空间 {self.max_length - final_tokens} tokens")
+            logger.info(f"[上下文裁剪] 当前约 {final_tokens} tokens ({final_pct:.1f}%)，剩余空间 {self.max_length - final_tokens} tokens")

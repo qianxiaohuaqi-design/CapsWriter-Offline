@@ -1,0 +1,23 @@
+# Locked server dependencies for CapsWriter-Offline (Phase 3 R4 5.1)
+# Python 3.11.x x64 on Windows
+
+# ASR Core & ONNX Runtime
+sherpa-onnx==1.13.4
+sherpa-onnx-core==1.13.4
+onnxruntime-directml==1.24.4
+numpy==2.4.6
+gguf==0.19.0
+
+# Basic & System
+rich==15.0.0
+websockets==15.0.1
+watchdog==6.0.0
+pypinyin==0.55.0
+pywin32==312
+psutil==7.2.2
+
+# Tray & Image
+pystray==0.19.5
+Pillow==12.3.0
+markdown==3.10.3
+tkhtmlview==0.3.2

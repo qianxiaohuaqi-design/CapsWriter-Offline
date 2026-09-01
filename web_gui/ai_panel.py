@@ -411,59 +411,62 @@ def render_ai_panel() -> None:
                     system_prompt = ui.textarea('角色提示词 / 人设', value=(role or {}).get('system_prompt', '')).classes('w-full min-h-56 bg-white font-mono')
 
                     def save_role() -> None:
-                        profile_id = profile_select.value or ''
-                        selected = model_select.value or ''
-                        if profile_id and selected:
-                            _update_profile_models(profile_id, selected)
-                        if is_new:
-                            stem = ConfigManager.create_llm_role(
-                                name=name_in.value,
-                                profile_id=profile_id,
-                                model=selected,
-                                system_prompt=system_prompt.value,
-                            )
-                        else:
-                            stem = role['stem']
-                        if role_overlay_switch.value:
-                            output_mode = role_output_select.value or 'overlay_preview'
-                            if output_mode == 'overlay_preview':
-                                preview_close_mode = role_close_select.value or section_close_mode
-                                preview_base_seconds = int(role_base_seconds.value or section_base_seconds)
-                                preview_max_seconds = int(role_max_seconds.value or section_max_seconds)
-                                if preview_max_seconds < preview_base_seconds:
-                                    preview_max_seconds = preview_base_seconds
+                        try:
+                            profile_id = profile_select.value or ''
+                            selected = model_select.value or ''
+                            if profile_id and selected:
+                                _update_profile_models(profile_id, selected)
+                            if is_new:
+                                stem = ConfigManager.create_llm_role(
+                                    name=name_in.value,
+                                    profile_id=profile_id,
+                                    model=selected,
+                                    system_prompt=system_prompt.value,
+                                )
                             else:
+                                stem = role['stem']
+                            if role_overlay_switch.value:
+                                output_mode = role_output_select.value or 'overlay_preview'
+                                if output_mode == 'overlay_preview':
+                                    preview_close_mode = role_close_select.value or section_close_mode
+                                    preview_base_seconds = int(role_base_seconds.value or section_base_seconds)
+                                    preview_max_seconds = int(role_max_seconds.value or section_max_seconds)
+                                    if preview_max_seconds < preview_base_seconds:
+                                        preview_max_seconds = preview_base_seconds
+                                else:
+                                    preview_close_mode = ''
+                                    preview_base_seconds = 0
+                                    preview_max_seconds = 0
+                            else:
+                                output_mode = 'inherit'
                                 preview_close_mode = ''
                                 preview_base_seconds = 0
                                 preview_max_seconds = 0
-                        else:
-                            output_mode = 'inherit'
-                            preview_close_mode = ''
-                            preview_base_seconds = 0
-                            preview_max_seconds = 0
-                        ConfigManager.set_llm_role_config(
-                            stem,
-                            name=name_in.value,
-                            profile_id=profile_id,
-                            model=selected,
-                            enable_hotwords=bool(hotwords_switch.value),
-                            enable_history=bool(history_switch.value),
-                            enable_read_selection=bool(selection_switch.value),
-                            enable_thinking=bool(thinking_switch.value),
-                            max_context_length=int(max_context.value or 4096),
-                            selection_max_length=int(selection_max.value or 1000),
-                            temperature=float(temperature.value or 0.7),
-                            max_tokens=int(max_tokens.value or 4096),
-                            output_mode=output_mode,
-                            preview_close_mode=preview_close_mode,
-                            preview_base_seconds=preview_base_seconds,
-                            preview_seconds_per_20_chars=1 if preview_base_seconds else 0,
-                            preview_max_seconds=preview_max_seconds,
-                            system_prompt=system_prompt.value,
-                        )
-                        main_content.refresh()
-                        dialog.close()
-                        ui.notify('角色配置已保存，列表已刷新。下一次角色调用生效。', type='positive')
+                            ConfigManager.set_llm_role_config(
+                                stem,
+                                name=name_in.value,
+                                profile_id=profile_id,
+                                model=selected,
+                                enable_hotwords=bool(hotwords_switch.value),
+                                enable_history=bool(history_switch.value),
+                                enable_read_selection=bool(selection_switch.value),
+                                enable_thinking=bool(thinking_switch.value),
+                                max_context_length=int(max_context.value or 4096),
+                                selection_max_length=int(selection_max.value or 1000),
+                                temperature=float(temperature.value or 0.7),
+                                max_tokens=int(max_tokens.value or 4096),
+                                output_mode=output_mode,
+                                preview_close_mode=preview_close_mode,
+                                preview_base_seconds=preview_base_seconds,
+                                preview_seconds_per_20_chars=1 if preview_base_seconds else 0,
+                                preview_max_seconds=preview_max_seconds,
+                                system_prompt=system_prompt.value,
+                            )
+                            main_content.refresh()
+                            dialog.close()
+                            ui.notify('角色配置已保存，列表已刷新。下一次角色调用生效。', type='positive')
+                        except Exception as err:
+                            ui.notify(f'保存角色失败：{err}', type='negative')
 
                     def ask_delete_role() -> None:
                         with ui.dialog() as confirm:

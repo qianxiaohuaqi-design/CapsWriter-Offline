@@ -19,6 +19,8 @@ import subprocess
 import re
 import shutil
 import time
+
+_T_GUI_IMPORT_START = time.perf_counter()
 from functools import partial
 from pathlib import Path
 
@@ -40,6 +42,7 @@ from core.client.output.input_history import (
     clear_input_history,
     load_input_history,
 )
+_T_GUI_IMPORTS_DONE = time.perf_counter()
 
 # Windows 独立 AppUserModelID 与 HWND 窗口图标绑定
 if sys.platform == 'win32':
@@ -245,6 +248,7 @@ def _apply_native_window_icon():
 
 @app.on_startup
 def _on_startup_icon_task():
+    t_startup_start = time.perf_counter()
     import threading
     threading.Thread(target=_apply_native_window_icon, daemon=True).start()
     # 仅当 App 独立启动时才在后台拉起托盘，避免 run_app 托管时出现双重托盘
@@ -992,6 +996,7 @@ def copy_text_to_clipboard(text: str) -> None:
 
 @ui.page('/')
 def main_page():
+    t_page_start = time.perf_counter()
     cfg = ConfigManager.get_all_config()
     health = process_manager.get_health_status()
 
@@ -1373,6 +1378,7 @@ def main_page():
                                 ui.label('历史记录').classes('font-semibold text-slate-900 dark:text-slate-100 text-lg')
 
                                 with ui.row().classes('items-center gap-3 shrink-0'):
+                                    refresh_history_button = ui.button('刷新', icon='refresh', on_click=lambda: (render_input_history.refresh(), ui.notify('历史记录已刷新。', type='info'))).props('outline color=amber-8').classes('h-9 px-3 rounded-lg text-sm bg-white')
                                     history_settings_button = ui.button('设置', icon='tune').props('outline color=grey-8').classes('h-9 px-3 rounded-lg text-sm bg-white')
                                     toggle_history_button = ui.button('展开全部', icon='unfold_more').props('flat color=amber-8').classes('h-9 px-3 rounded-lg text-sm')
 
@@ -1382,8 +1388,6 @@ def main_page():
                                     placeholder='搜索历史文本、应用名或角色...'
                                 ).props('outlined dense clearable').classes('flex-1 bg-white')
                                 search_button = ui.button(icon='search').props('outline round color=amber-8 title="搜索历史"')
-
-                            history_box = ui.column().classes('gap-3 w-full')
 
                             def show_history_detail(item):
                                 with ui.dialog() as dialog, ui.card().classes('w-full max-w-2xl p-6 bg-white rounded-2xl gap-4'):
@@ -1410,9 +1414,12 @@ def main_page():
 
                                 dialog.open()
 
+                            def apply_history_search(val):
+                                history_query['value'] = val or ''
+                                render_input_history.refresh()
+
                             @ui.refreshable
                             def render_input_history():
-                                history_box.clear()
                                 query = history_query['value'].strip().lower()
                                 records = load_input_history(limit=80)
 
@@ -1427,7 +1434,7 @@ def main_page():
                                 elif history_view['mode'] == 'compact':
                                     records = records[:3]
 
-                                with history_box:
+                                with ui.column().classes('gap-3 w-full'):
                                     if not records:
                                         message = '没有找到匹配的历史记录。' if query else '暂无历史记录。完成一次听写输出后，这里会自动出现记录。'
                                         ui.label(message).classes('text-sm text-slate-500 py-6')
@@ -1457,8 +1464,7 @@ def main_page():
                                                     ui.button(icon='content_copy', on_click=partial(copy_text_to_clipboard, text)).props('flat round color=amber-8 title="复制最终文本"')
                                                     ui.button(icon='open_in_full', on_click=partial(show_history_detail, item)).props('flat round color=grey-7 title="查看全文"')
 
-                            with history_box:
-                                render_input_history()
+                            render_input_history()
 
                             def confirm_clear_history():
                                 with ui.dialog() as dialog, ui.card().classes('w-full max-w-sm p-6 bg-white rounded-2xl gap-4'):
@@ -2957,6 +2963,7 @@ def main_page():
 
 # 以 100% 原生桌面客户端软件窗口模式运行 (Native Desktop Client App Window)
 if __name__ in {"__main__", "__mp_main__"}:
+    t_gui_run_start = time.perf_counter()
     if sys.platform == 'win32':
         try:
             import ctypes

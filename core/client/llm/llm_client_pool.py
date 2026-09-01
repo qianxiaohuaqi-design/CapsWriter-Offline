@@ -2,12 +2,13 @@
 LLM 客户端池
 
 功能：
-1. 缓存 OpenAI / Ollama 客户端实例
-2. 根据 provider 和 api_url 创建和获取客户端
+1. 缓存 OpenAI / Ollama 客户端实例（基于 Provider + Profile + URL + Key 哈希隔离）
+2. 分阶段超时策略（connect=5.0s, write=10.0s, read=30.0s, pool=5.0s）
+3. 严格资源释放（clear/close 遍历关闭连接池，杜绝 Socket 泄漏）
 """
 import hashlib
 from typing import Any, Dict
-from .llm_constants import APIConfig
+from .llm_constants import APIConfig, TimeoutConfig
 
 
 class ClientPool:
@@ -16,42 +17,55 @@ class ClientPool:
     def __init__(self):
         self._clients: Dict[str, Any] = {}
 
-    def get_client(self, provider: str, api_url: str = '', api_key: str = '') -> Any:
+    def get_client(self, provider: str, api_url: str = '', api_key: str = '', profile_id: str = '') -> Any:
         """获取 LLM 客户端（带缓存与按需延迟加载）"""
         final_url = api_url or APIConfig.DEFAULT_API_URLS.get(provider)
         final_key = api_key or APIConfig.DEFAULT_API_KEYS.get(provider, '')
         key_digest = hashlib.sha256(final_key.encode('utf-8')).hexdigest()[:12] if final_key else 'no-key'
-        cache_key = f"{provider}_{final_url}_{key_digest}"
+        cache_key = f"{provider}_{profile_id}_{final_url}_{key_digest}"
 
         if cache_key not in self._clients:
-            timeout = APIConfig.DEFAULT_TIMEOUTS.get(provider, APIConfig.DEFAULT_TIMEOUT)
+            import httpx
+            staged_timeout = TimeoutConfig.get_httpx_timeout(is_stream=False)
 
             # 按需延迟创建客户端，避免在 App 启动阶段触发依赖库初始化延时
             if provider == 'ollama':
                 from ollama import Client as OllamaClient
                 self._clients[cache_key] = OllamaClient(
                     host=final_url,
-                    timeout=timeout,
+                    timeout=staged_timeout,
                 )
             else:
-                import httpx
                 from openai import OpenAI
                 # 检查是否为国内 API 端点或厂商；如果是国内服务（如 智谱/DeepSeek/月之暗面/火山引擎 等），强制跳过代理直连，避免梯子节点绕路海外
                 domestic_providers = {'zhipu', 'deepseek', 'moonshot', 'volcengine', 'siliconflow', 'qwen', 'baichuan', 'minimax', 'yi', 'stepfun', 'doubao'}
                 domestic_domains = ['deepseek.com', 'aliyun.com', 'baidubce.com', 'volces.com', 'bigmodel.cn', 'zhipuai.cn', 'minimax.chat', 'moonshot.cn', 'siliconflow.cn', 'lingyiwanwu.com', 'stepfun.com']
                 is_domestic = (provider in domestic_providers) or any(domain in (final_url or '').lower() for domain in domestic_domains)
-                http_client = httpx.Client(timeout=timeout, trust_env=not is_domestic) if is_domestic else None
+                http_client = httpx.Client(timeout=staged_timeout, trust_env=not is_domestic) if is_domestic else None
 
                 self._clients[cache_key] = OpenAI(
                     base_url=final_url,
                     api_key=final_key,
-                    timeout=timeout,
+                    timeout=staged_timeout,
                     http_client=http_client,
                 )
 
         return self._clients[cache_key]
 
     def clear(self):
-        """清空客户端缓存"""
+        """清空客户端缓存并安全释放底层连接资源"""
+        for client in list(self._clients.values()):
+            try:
+                # 针对 OpenAI Client 实例（OpenAI client .close() 会关闭底层 httpx.Client）
+                if hasattr(client, 'close') and callable(client.close):
+                    client.close()
+                elif hasattr(client, '_client') and hasattr(client._client, 'close'):
+                    client._client.close()
+            except Exception:
+                pass
         self._clients.clear()
+
+    def close(self):
+        """关闭客户端池（clear 的别名）"""
+        self.clear()
 

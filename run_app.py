@@ -168,6 +168,7 @@ def _launch_gui() -> None:
         _ensure_control_center_visible(delay=0.2)
         return
 
+    t_gui_spawn_start = time.perf_counter()
     env = os.environ.copy()
     env['CAPSWRITER_CONTROL_CENTER'] = '1'
     if _is_frozen_app():
@@ -216,6 +217,8 @@ def _request_exit() -> None:
 
 
 def main():
+    t_bootstrap_start = time.perf_counter()
+
     if '--server' in sys.argv:
         from core.server.app import CapsWriterServer
 
@@ -253,23 +256,26 @@ def main():
     print("=" * 60)
 
     # 1. 后台静默启动 ASR 服务端 (无黑框)，端口已占用则复用已有服务
+    t_srv_start = time.perf_counter()
     if process_manager.is_port_open('127.0.0.1', 6016):
-        print("[1/2] 检测到 ASR 服务端 (6016) 已在运行，直接复用")
+        print(f"[1/2] 检测到 ASR 服务端 (6016) 已在运行，直接复用 ({time.perf_counter() - t_srv_start:.3f}s)")
     else:
         ok, message = process_manager.launch_server()
-        print(f"[1/2] {message}")
+        print(f"[1/2] {message} ({time.perf_counter() - t_srv_start:.3f}s)")
 
     # 2. 后台静默启动客户端按键监听 (无黑框)，优先复用本启动器拉起的存活进程
+    t_cli_start = time.perf_counter()
     client_pid = process_manager.read_alive_pid(CLIENT_PID_FILE, 'start_client')
     if client_pid:
-        print(f"[2/2] 检测到客户端热键监听已在运行 (PID: {client_pid})，直接复用")
+        print(f"[2/2] 检测到客户端热键监听已在运行 (PID: {client_pid})，直接复用 ({time.perf_counter() - t_cli_start:.3f}s)")
     else:
         ok, message = process_manager.launch_client()
-        print(f"[2/2] {message}")
+        print(f"[2/2] {message} ({time.perf_counter() - t_cli_start:.3f}s)")
 
     # 3. 启动 100% 原生桌面客户端窗口
     print("\n正在唤醒 CapsWriter 原生桌面客户端窗口...")
     _launch_gui()
+    print(f"[Launcher] 启动器就绪引导完成，耗时: {time.perf_counter() - t_bootstrap_start:.3f}s")
 
     # 4. 启动控制中心总托盘；托盘退出才会彻底结束后台服务
     try:

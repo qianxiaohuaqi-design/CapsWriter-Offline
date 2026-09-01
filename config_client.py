@@ -76,10 +76,10 @@ class ClientConfig:
     traditional_convert = False
     traditional_locale = 'zh-hant'  # 繁体地区：'zh-hant'（标准繁体）, 'zh-tw'（台湾繁体）, 'zh-hk'（香港繁体）
 
-    hot = False                 # 是否启用热词替换（统一 RAG 匹配）
+    hot = True                 # 是否启用热词替换（统一 RAG 匹配）
     hot_thresh = 0.85           # RAG 替换热词阈值（高阈值，用于实际替换）
     hot_similar = 0.6           # RAG 相似热词阈值（低阈值，用于 LLM 上下文）
-    hot_rule = False             # 是否启用自定义规则替换（基于正则表达式）
+    hot_rule = True             # 是否启用自定义规则替换（基于正则表达式）
 
     llm_enabled = True          # 是否启用 LLM 润色功能，需要配置 LLM/ 目录下的角色文件
     llm_stop_key = 'esc'        # 中断 LLM 输出的快捷键
@@ -87,11 +87,11 @@ class ClientConfig:
     enable_tray = True          # 客户端默认启用托盘图标功能
 
     # 历史记录配置
-    history_auto_clear_on_start = True  # 每次重启/启动客户端时是否自动清空历史记录
-    history_max_items = 20                # 历史记录最大保留条数 (0 表示全部保留/不限制条数，默认)
+    history_auto_clear_on_start = False  # 每次重启/启动客户端时是否自动清空历史记录
+    history_max_items = 0                # 历史记录最大保留条数 (0 表示全部保留/不限制条数，默认)
 
     # 日志配置
-    log_level = 'DEBUG'          # 日志级别：'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'
+    log_level = 'INFO'           # 日志级别：'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'
 
     mic_seg_duration = 60       # 麦克风听写时分段长度：60秒
     mic_seg_overlap = 4         # 麦克风听写时分段重叠：4秒

@@ -1,0 +1,40 @@
+# Locked client dependencies for CapsWriter-Offline (Phase 3 R4 5.1)
+# Python 3.11.x x64 on Windows
+
+# CLI and Rich Output
+rich==15.0.0
+typer==0.27.0
+colorama==0.4.6
+markdown==3.10.3
+
+# System, Input, Hardware
+keyboard==0.13.5
+pynput==1.8.2
+pyclip==0.7.0
+sounddevice==0.5.5
+watchdog==6.0.0
+pywin32==312
+psutil==7.2.2
+
+# Network and API
+websockets==15.0.1
+openai==2.51.0
+ollama==0.6.2
+httpx==0.28.1
+
+# Data Processing
+numpy==2.4.6
+numba==0.66.0
+pypinyin==0.55.0
+srt==3.5.3
+rapidfuzz==3.14.5
+
+# Tray and UI
+pystray==0.19.5
+Pillow==12.3.0
+tkhtmlview==0.3.2
+nicegui==3.15.0
+pywebview==6.2.1
+
+# Packaging & Build
+pyinstaller==6.21.0

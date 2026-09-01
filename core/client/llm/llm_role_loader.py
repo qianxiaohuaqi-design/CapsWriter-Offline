@@ -43,8 +43,9 @@ class RoleLoader:
 
         # 2. 创建 RoleConfig 对象
         role_config = RoleConfig(**config)
-        profile_id = getattr(module, 'profile_id', '')
+        profile_id = getattr(module, 'profile_id', '') or getattr(role_config, 'profile_id', '')
         if profile_id:
+            role_config.profile_id = profile_id
             try:
                 from web_gui.config_manager import ConfigManager
                 profile = ConfigManager.get_llm_profile(profile_id, include_key=True)
@@ -59,7 +60,14 @@ class RoleLoader:
             except Exception:
                 role_config.enabled = False
                 role_config.api_key = ''
-        role_config.api_key = get_llm_role_api_key(module_name, role_config.provider, role_config.api_key)
+
+        # 统一优先级解析：Role-specific Key > Bound Profile Key > Provider Global Key > Code Fallback Key
+        role_config.api_key = get_llm_role_api_key(
+            role_id=module_name,
+            provider=role_config.provider,
+            fallback=role_config.api_key,
+            profile_id=profile_id
+        )
 
         # 空字符串和「默认」都表示默认角色
         role_name = role_config.display_name or RoleConfig.DEFAULT_ROLE_NAME

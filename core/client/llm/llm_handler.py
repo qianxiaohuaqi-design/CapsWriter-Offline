@@ -11,7 +11,10 @@ from dataclasses import dataclass
 from typing import Dict, Tuple, Optional, Any
 from pathlib import Path
 import ast
+import os
+import threading
 
+from .llm_interfaces import LLMResult
 from .llm_role_loader import RoleLoader
 from .llm_context import ContextManager
 from .llm_watcher import LLMFileWatcher
@@ -28,12 +31,25 @@ from config_client import BASE_DIR
 
 
 CONFIG_CLIENT_PATH = Path(BASE_DIR) / 'config_client.py'
+_CONFIG_AST_CACHE: Dict[str, Tuple[int, ast.AST]] = {}
+_CONFIG_AST_LOCK = threading.Lock()
 
 
 def get_live_client_config(var_name: str, default):
-    """Read lightweight user preferences without restarting the client."""
+    """Read lightweight user preferences without restarting the client (with AST mtime caching)."""
     try:
-        tree = ast.parse(CONFIG_CLIENT_PATH.read_text(encoding='utf-8'))
+        if not CONFIG_CLIENT_PATH.exists():
+            return default
+        path_str = str(CONFIG_CLIENT_PATH)
+        mtime_ns = os.stat(path_str).st_mtime_ns
+        with _CONFIG_AST_LOCK:
+            if path_str in _CONFIG_AST_CACHE and _CONFIG_AST_CACHE[path_str][0] == mtime_ns:
+                tree = _CONFIG_AST_CACHE[path_str][1]
+            else:
+                content = CONFIG_CLIENT_PATH.read_text(encoding='utf-8-sig')
+                tree = ast.parse(content)
+                _CONFIG_AST_CACHE[path_str] = (mtime_ns, tree)
+
         for node in ast.walk(tree):
             if (
                 isinstance(node, (ast.Assign, ast.AnnAssign))
@@ -46,18 +62,6 @@ def get_live_client_config(var_name: str, default):
     except Exception:
         pass
     return default
-
-
-@dataclass
-class LLMResult:
-    """LLM 处理结果"""
-    result: str                    # 润色后的文本
-    role_name: Optional[str]       # 角色名
-    processed: bool                # 是否经过处理
-    token_count: int               # token数
-    polish_time: float             # 总耗时（秒）
-    input_text: str                # 输入文本（已移除角色前缀）
-    generation_time: float = 0.0   # 生成时间（秒，从第一个 token 开始）
 
 
 # ======================================================================
@@ -253,9 +257,17 @@ class LLMHandler:
             self.app.state.set_output_text(result_text)
             broadcast_output_udp(result_text)
 
-            return LLMResult(result=result_text, role_name=None, processed=False,
-                                token_count=0, polish_time=0, input_text=text)
-
+            return LLMResult(
+                result=result_text,
+                role_name=None,
+                processed=False,
+                token_count=0,
+                polish_time=0.0,
+                input_text=text,
+                generation_time=0.0,
+                status="success",
+                fallback_reason=None
+            )
 
         # 4. 根据输出模式分发处理
         role_output_mode = getattr(role_config, 'output_mode', 'inherit') or 'inherit'
@@ -267,9 +279,16 @@ class LLMHandler:
                 getattr(Config, 'llm_role_output_destination', 'overlay_preview'),
             )
         if role_output_mode == 'overlay_preview':
-            result, token_count, gen_time = await handle_overlay_preview_mode(self, text, role_config, matched_hotwords, content)
+            mode_result = await handle_overlay_preview_mode(self, text, role_config, matched_hotwords, content)
         else: # typing
-            result, token_count, gen_time = await handle_typing_mode(self, text, paste, matched_hotwords, role_config, content)
+            mode_result = await handle_typing_mode(self, text, paste, matched_hotwords, role_config, content)
+
+        if len(mode_result) == 5:
+            result, token_count, gen_time, status, fallback_reason = mode_result
+        else:
+            result, token_count, gen_time = mode_result[:3]
+            status = "success"
+            fallback_reason = None
 
         # 5. 后置处理
         # 更新全局状态（即便是中断了，也记录已经输出的部分）
@@ -280,11 +299,13 @@ class LLMHandler:
         return LLMResult(
             result=result,
             role_name=role_config.display_name or RoleConfig.DEFAULT_ROLE_NAME,
-            processed=True,
+            processed=(status == "success"),
             token_count=token_count,
             polish_time=time.time() - start_time,
             input_text=content,
-            generation_time=gen_time
+            generation_time=gen_time,
+            status=status,
+            fallback_reason=fallback_reason
         )
 
 

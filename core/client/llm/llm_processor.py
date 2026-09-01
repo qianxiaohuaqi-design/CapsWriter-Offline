@@ -64,7 +64,8 @@ class LLMProcessor:
         client = self.client_pool.get_client(
             provider=role_config.provider,
             api_url=role_config.api_url,
-            api_key=role_config.api_key
+            api_key=role_config.api_key,
+            profile_id=getattr(role_config, 'profile_id', '')
         )
 
         try:
@@ -254,8 +255,11 @@ class LLMProcessor:
         params = self._build_request_params(role_config, messages)
         params['stream'] = True
 
-        if not role_config.enable_thinking:
-            params['extra_body'] = {"thinking": {"type": "disabled"}}
+        capabilities = getattr(role_config, 'capabilities', None)
+        if isinstance(capabilities, dict) and capabilities.get('thinking_control', False):
+            extra_body = dict(params.get('extra_body') or {})
+            extra_body['thinking'] = {"type": "enabled" if role_config.enable_thinking else "disabled"}
+            params['extra_body'] = extra_body
 
         stream = client.chat.completions.create(**params)
 

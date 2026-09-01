@@ -52,16 +52,16 @@ async def handle_overlay_preview_mode(handler, text: str, role_config=None, matc
             handler.process, role_config, content, matched_hotwords, stream_overlay_chunk
         )
     except Exception as e:
-        result_text, _ = handle_llm_error(e, content, role_config.name if role_config else "LLM")
+        result_text, _, fallback_reason = handle_llm_error(e, content, role_config.name if role_config else "LLM")
         result_text = TextOutput.strip_punc(result_text)
         if not show_overlay_preview(result_text, preview_config=preview_config):
             await output_text(result_text, Config.paste)
-        return (result_text, 0, 0.0)
+        return (result_text, 0, 0.0, "fallback", fallback_reason)
 
     final_text = TextOutput.strip_punc(polished_text or ''.join(chunks) or content)
     if not show_overlay_preview(final_text, preview_config=preview_config):
         await output_text(final_text, Config.paste)
-    return (final_text, token_count, gen_time)
+    return (final_text, token_count, gen_time, "success", None)
 
 
 def _role_preview_config(role_config) -> dict:

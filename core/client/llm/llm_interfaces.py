@@ -5,6 +5,29 @@ LLM 接口定义
 """
 from typing import Protocol, List, Dict, Optional, Tuple, Any
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
+
+
+# ======================================================================
+# --- LLM 处理结果 ---
+
+@dataclass
+class LLMResult:
+    """LLM 处理结果"""
+    result: str = ""                              # 润色后的文本 / 回退文本
+    role_name: Optional[str] = None               # 角色名
+    processed: bool = False                       # 是否经过处理
+    token_count: int = 0                          # token数
+    polish_time: float = 0.0                      # 总耗时（秒）
+    input_text: str = ""                          # 输入文本（已移除角色前缀）
+    generation_time: float = 0.0                  # 生成时间（秒，从第一个 token 开始）
+    status: str = "success"                       # 'success' | 'fallback' | 'error'
+    fallback_reason: Optional[str] = None         # 'timeout' | 'http_429' | 'http_401' | 'http_500' | 'empty_response' | 'connection_error'
+
+    @property
+    def text(self) -> str:
+        """输出文本别名"""
+        return self.result
 
 
 # ======================================================================

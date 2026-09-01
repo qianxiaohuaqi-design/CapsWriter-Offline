@@ -34,6 +34,35 @@ class TruncatingFileHandler(RotatingFileHandler):
         self.stream.flush()
 
 
+import re
+
+_API_KEY_PATTERN = re.compile(r'\b(sk-[a-zA-Z0-9_\-]{4})[a-zA-Z0-9_\-]+([a-zA-Z0-9_\-]{4})\b')
+_BEARER_PATTERN = re.compile(r'(Bearer\s+[a-zA-Z0-9_\-]{4})[a-zA-Z0-9_\-]+([a-zA-Z0-9_\-]{4})', re.IGNORECASE)
+
+
+def mask_sensitive_text(text: str) -> str:
+    """对字符串中的敏感 API Key 与 Token 进行掩码脱敏"""
+    if not isinstance(text, str):
+        return text
+    text = _API_KEY_PATTERN.sub(r'\1********\2', text)
+    text = _BEARER_PATTERN.sub(r'\1********\2', text)
+    return text
+
+
+class SensitiveDataFilter(logging.Filter):
+    """过滤并脱敏日志中的敏感 API Key 及 Bearer Token"""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if isinstance(record.msg, str):
+            record.msg = mask_sensitive_text(record.msg)
+        if record.args:
+            if isinstance(record.args, dict):
+                record.args = {k: mask_sensitive_text(v) if isinstance(v, str) else v for k, v in record.args.items()}
+            elif isinstance(record.args, tuple):
+                record.args = tuple(mask_sensitive_text(v) if isinstance(v, str) else v for v in record.args)
+        return True
+
+
 class Logger:
     """日志系统管理器"""
 
@@ -111,6 +140,9 @@ class Logger:
             show_path=False
         )
         logger.addHandler(stream_handler)
+
+        # 3. 敏感数据脱敏过滤器
+        logger.addFilter(SensitiveDataFilter())
 
         # 缓存日志记录器
         cls._loggers[name] = logger

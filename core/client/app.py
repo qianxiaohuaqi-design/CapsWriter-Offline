@@ -9,6 +9,7 @@ CapsWriter Offline 客户端主程序门面类 (Facade)
 import os
 import sys
 import asyncio
+import time
 from pathlib import Path
 
 from .state import ClientState
@@ -44,6 +45,7 @@ class CapsWriterClient:
     管理的外部接口简洁：start()。
     """
     def __init__(self):
+        t_init_start = time.perf_counter()
         # 确保正确的工作目录
         self.base_dir = Path(__file__).parents[2]
         os.chdir(self.base_dir)
@@ -79,6 +81,7 @@ class CapsWriterClient:
 
         # 内存清理
         empty_current_working_set()
+        logger.debug(f"CapsWriterClient 初始化完成，耗时: {time.perf_counter() - t_init_start:.3f}s")
 
     def stop(self):
         """
@@ -126,6 +129,7 @@ class CapsWriterClient:
         
         自动根据命令行参数识别模式。内部管理异步循环。
         """
+        t_start = time.perf_counter()
 
         # 注册退出函数
         register_signal(self.stop)
@@ -139,6 +143,7 @@ class CapsWriterClient:
             # 麦克风实时模式
             runner = MicRunner(self)
         
+        logger.info(f"CapsWriterClient 正在启动运行组件 (耗时: {time.perf_counter() - t_start:.3f}s)...")
         try:
             self.loop.run_until_complete(runner.run())
         except RuntimeError:

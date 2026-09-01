@@ -3,8 +3,9 @@
 """
 
 # ==================== 基本信息 ====================
-name = '小助理'                   # 角色名称（留空表示默认）
+name = '小助理'             # 角色名称（留空表示默认）
 enabled = False                           # 是否启用此角色
+profile_id = 'deepseek'
 
 # ==================== API 配置 ====================
 provider = 'lmstudio'                   # API 提供商：'ollama', 'openai', 'deepseek', 'moonshot', 'zhipu', 'claude', 'gemini'
@@ -55,5 +56,3 @@ prompt_prefix_input = '用户输入：'       # 用户输入前缀
 
 # ==================== System Prompt ====================
 system_prompt = '\n你是一个助手，帮助用户解答问题。\n\n要求：\n- 按用户的要求输出内容\n- 不要添加任何额外说明\n'
-
-profile_id = 'api'
