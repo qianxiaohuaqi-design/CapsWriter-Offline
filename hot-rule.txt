@@ -22,9 +22,11 @@
 (?<=^)[，。]?回车[，。 ]?|(?<=回车)回车[，。 ]?|(?<=回车[，。 ])回车[，。 ]?|[，。]?回车[，。]?(?=回车)|[，。]?回车$ = \n
 
 # AI & Agent 专有名词替换规则
+(?i)\b(caex|code\s*x)\b     =   Codex
 扣德克斯     =   Codex
 科德克斯     =   Codex
 扣得克斯     =   Codex
+抠德克斯     =   Codex
 克劳德代码   =   Claude Code
 克劳德扣德   =   Claude Code
 克劳德       =   Claude

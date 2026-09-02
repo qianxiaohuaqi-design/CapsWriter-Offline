@@ -3,7 +3,7 @@
 """
 
 name = '大助理'
-enabled = False
+enabled = True
 profile_id = 'deepseek'
 
 provider = 'deepseek'

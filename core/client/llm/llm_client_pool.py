@@ -52,20 +52,14 @@ class ClientPool:
 
         return self._clients[cache_key]
 
+
+
     def clear(self):
-        """清空客户端缓存并安全释放底层连接资源"""
-        for client in list(self._clients.values()):
-            try:
-                # 针对 OpenAI Client 实例（OpenAI client .close() 会关闭底层 httpx.Client）
-                if hasattr(client, 'close') and callable(client.close):
-                    client.close()
-                elif hasattr(client, '_client') and hasattr(client._client, 'close'):
-                    client._client.close()
-            except Exception:
-                pass
-        self._clients.clear()
+        """清空客户端缓存，旧客户端由垃圾回收自动清理，避免强行 close 中断活动请求"""
+        self._clients = {}
 
     def close(self):
-        """关闭客户端池（clear 的别名）"""
+        """关闭客户端池"""
         self.clear()
+
 
