@@ -414,11 +414,29 @@ def init():
     original_cwd = Path.cwd()
     lib_dir = Path(__file__).parent / 'bin'
 
+    if not lib_dir.exists():
+        alt_bin = Path(__file__).resolve().parent.parent.parent / 'llama' / 'bin'
+        if alt_bin.exists():
+            lib_dir = alt_bin
+        else:
+            lib_dir.mkdir(parents=True, exist_ok=True)
+
+    has_dll = any((lib_dir / dll_name).exists() for dll_name in ['llama.dll', 'libllama.so', 'llama.so', 'ggml.dll'])
+    if not has_dll:
+        raise FileNotFoundError(
+            f"GGUF 语音引擎缺少底层 llama.cpp 动态库 (llama.dll)。"
+            f"请从 https://github.com/ggml-org/llama.cpp/releases/download/b7798/llama-b7798-bin-win-vulkan-x64.zip 下载，"
+            f"解压后将 llama.dll 及其依赖动态库放入：{lib_dir}"
+        )
+
     # 跳转到 dll 所在目录，并将其加到 Path
     os.chdir(lib_dir)
     os.environ['PATH'] = os.getcwd() + os.pathsep + os.environ['PATH']
     if hasattr(os, 'add_dll_directory'):
-        os.add_dll_directory(os.getcwd())
+        try:
+            os.add_dll_directory(os.getcwd())
+        except Exception:
+            pass
     logger.info(f"初始化 llama.cpp，跳转至：{Path.cwd()}")
 
     # 绑定 llama api
