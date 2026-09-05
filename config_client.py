@@ -88,7 +88,7 @@ class ClientConfig:
 
     # 历史记录配置
     history_auto_clear_on_start = False  # 每次重启/启动客户端时是否自动清空历史记录
-    history_max_items = 0                # 历史记录最大保留条数 (0 表示全部保留/不限制条数，默认)
+    history_max_items = 200               # 历史记录最大保留条数 (默认保留 200 条)
 
     # 日志配置
     log_level = 'INFO'           # 日志级别：'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'
