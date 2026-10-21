@@ -68,10 +68,25 @@ class AudioRecorder:
     async def _send_message(self, message: AudioMessage) -> None:
         """发送消息到服务端"""
         if not self._ws_manager.is_connected:
+            # 刚启动阶段快速尝试等待连接（最多等待 2.0s）
+            for _ in range(10):
+                if self._ws_manager.is_connected:
+                    break
+                await self._ws_manager.connect()
+                if self._ws_manager.is_connected:
+                    break
+                await asyncio.sleep(0.2)
+
+        if not self._ws_manager.is_connected:
             if message.is_final:
                 self.state.pop_audio_file(message.task_id)
-                console.print('    服务端未连接，无法发送\n')
-                logger.warning("服务端未连接，无法发送音频数据")
+                console.print('    服务端尚未就绪或连接中，无法发送\n')
+                logger.warning("服务端尚未就绪或未连接，无法发送音频数据")
+                try:
+                    from core.ui.modern_overlay.pill_overlay import get_pill_overlay
+                    get_pill_overlay().update_text("语音服务启动中，请稍候...", final=True)
+                except Exception:
+                    pass
             return
         
         # 使用 WebSocketManager 发送协议消息

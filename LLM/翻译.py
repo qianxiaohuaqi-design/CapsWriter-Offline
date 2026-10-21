@@ -11,7 +11,7 @@ profile_id = 'deepseek'
 provider = 'lmstudio'                   # API 提供商：'ollama', 'openai', 'deepseek', 'moonshot', 'zhipu', 'claude', 'gemini'
 api_url = ''                            # 留空则自动使用 provider 对应的默认值
 api_key = ''                            # API Key
-model = 'deepseek-v4-flash'                   # 模型名称
+model = 'deepseek-chat'                   # 模型名称
 
 # ==================== 上下文管理 ====================
 max_context_length = 4096               # 最大上下文长度（token 数）

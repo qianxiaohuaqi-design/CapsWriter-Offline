@@ -3,13 +3,13 @@
 """
 
 name = '大助理'
-enabled = True
+enabled = False
 profile_id = 'deepseek'
 
 provider = 'deepseek'
 api_url = ''
 api_key = ''
-model = 'deepseek-v4-flash'
+model = 'deepseek-chat'
 
 max_context_length = 1024 * 1024
 

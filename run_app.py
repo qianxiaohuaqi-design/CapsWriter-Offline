@@ -262,6 +262,11 @@ def main():
     else:
         ok, message = process_manager.launch_server()
         print(f"[1/2] {message} ({time.perf_counter() - t_srv_start:.3f}s)")
+        # 轻量等待 ASR 服务端网络端口就绪（最多 2.5s），降低客户端启动后的连接拒绝率
+        for _ in range(12):
+            if process_manager.is_port_open('127.0.0.1', 6016):
+                break
+            time.sleep(0.2)
 
     # 2. 后台静默启动客户端按键监听 (无黑框)，优先复用本启动器拉起的存活进程
     t_cli_start = time.perf_counter()

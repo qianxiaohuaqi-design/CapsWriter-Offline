@@ -4,13 +4,13 @@
 
 # ==================== 基本信息 ====================
 name = ''                           # 角色名称（留空表示默认）
-enabled = False                    # 是否启用此角色（默认关闭，配置 API 后可在控制中心开启）
+enabled = True                    # 是否启用此角色（默认关闭，配置 API 后可在控制中心开启）
 
 # ==================== API 配置 ====================
 provider = 'deepseek'                   # API 提供商：'ollama', 'openai', 'deepseek', 'moonshot', 'zhipu', 'claude', 'gemini'
 api_url = ''                            # 留空则自动使用 provider 对应的默认值
 api_key = '' # API Key
-model = 'deepseek-v4-flash'                 # 模型名称
+model = 'deepseek-chat'                 # 模型名称
 
 # ==================== 上下文管理 ====================
 max_context_length = 4096               # 最大上下文长度（token 数）

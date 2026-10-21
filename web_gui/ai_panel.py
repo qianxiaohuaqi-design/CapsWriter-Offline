@@ -48,7 +48,7 @@ def _profile_summary(profile: dict | None) -> str:
 
 def _provider_default_models(provider: str) -> list[str]:
     defaults = {
-        'deepseek': ['deepseek-v4-flash', 'deepseek-v4-pro'],
+        'deepseek': ['deepseek-chat', 'deepseek-reasoner'],
         'openai': [],
         'ollama': [],
         'lmstudio': [],
@@ -162,8 +162,8 @@ def render_ai_panel() -> None:
             'name': '新的 API 配置',
             'provider': 'deepseek',
             'api_url': '',
-            'models': ['deepseek-v4-flash', 'deepseek-v4-pro'],
-            'default_model': 'deepseek-v4-flash',
+            'models': ['deepseek-chat', 'deepseek-reasoner'],
+            'default_model': 'deepseek-chat',
             'api_key': '',
         }
         model_state = {'models': _dedupe_models(source.get('models'), source.get('default_model'))}
@@ -188,7 +188,7 @@ def render_ai_panel() -> None:
                 model_count = ui.label(f'当前模型列表：{len(model_state["models"])} 个').classes('text-xs text-slate-500')
 
                 with ui.row().classes('items-end gap-2 w-full'):
-                    manual_model = ui.input('手动添加模型', placeholder='例如 deepseek-v4-flash').classes('flex-1')
+                    manual_model = ui.input('手动添加模型', placeholder='例如 deepseek-chat').classes('flex-1')
 
                     def add_manual_model() -> None:
                         model = (manual_model.value or '').strip()

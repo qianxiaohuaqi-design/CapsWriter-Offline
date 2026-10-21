@@ -20,6 +20,7 @@ class GpuBoostManager:
 
     def __init__(self, state):
         self.state = state
+        self._warned_non_admin = False
 
     # ── 公开方法 ──────────────────────────────────
 
@@ -28,7 +29,9 @@ class GpuBoostManager:
         if task.command != 'gpu_boost':
             return
         if not self._check_admin():
-            logger.warning("非管理员权限，无法执行 GPU 加速命令")
+            if not self._warned_non_admin:
+                logger.warning("当前非管理员权限，无法执行 GPU 预加速命令（需以管理员权限运行方可锁定显存频率）")
+                self._warned_non_admin = True
             return
         if self.state.gpu_boosted:
             self.state.gpu_last_active = 0
@@ -53,7 +56,9 @@ class GpuBoostManager:
             return
 
         if not self._check_admin():
-            logger.warning("非管理员权限，无法执行 GPU 取消加速命令")
+            if not self._warned_non_admin:
+                logger.warning("当前非管理员权限，无法执行 GPU 取消加速命令")
+                self._warned_non_admin = True
             return
 
         logger.info(f"GPU 闲置 {idle_time:.0f}s，取消加速: {Config.gpu_unboost_cmd}")

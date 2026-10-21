@@ -26,51 +26,67 @@ CapsWriter-Offline GUI 增强版是一个 Windows 离线语音输入工具。它
 - 服务与诊断：查看服务端、客户端、GUI、托盘和模型状态，支持重启组件和完全退出。
 - 配置备份与迁移：导出/导入常用设置，默认不导出私有 API Key。
 
-## 安装与运行
+## 安装、更新与运行
 
-### 下载发布包
+### 方式一：日常轻量更新（已有用户 / Bug 修复推荐）
 
-如果只是日常使用，推荐从 GitHub Releases 下载打包好的发布包：
+如果您之前已经在使用 CapsWriter，当 GitHub 仓库有日常优化或小 Bug 修复时，**完全不需要重新下载几个 G 的完整发布包**，只需轻量覆盖代码即可：
 
-- `CapsWriter-Full.zip`：完整版，内置本地 ASR 模型，下载后解压即可运行，体积较大。
-- `CapsWriter-Lite.zip`：精简版，不内置 ASR 模型，体积较小；首次使用前可在“语音识别与硬件”页面打开模型配置指引，下载模型并放入 `models/` 目录。
+1. **获取最新代码**：
+   - **方式 A（Git 用户）**：在本地 CapsWriter 目录下直接打开终端执行：
+     ```powershell
+     git pull
+     ```
+   - **方式 B（直接下载）**：在 GitHub 页面点击右上角绿色 **`Code`** 按钮 ➔ 选择 **`Download ZIP`**，下载并解压。
+2. **复制覆盖代码文件**：
+   - 将解压后的最新代码复制并覆盖到您现有的本地 CapsWriter 目录中：
+     - **需要覆盖的文件/目录**：`core/`、`web_gui/`、`LLM/`、`run_app.py`、`start_server.py`、`start_client.py` 等代码文件。
+     - ⚠️ **请保留您的个人数据与模型**：**不要覆盖或删除**您本地的 `models/`（模型文件）、`input_history.jsonl`（历史记录）以及个人自定义的 `hot.txt` / `hot-rule.txt`（热词规则表）。
+3. **双击启动**：
+   - **绿色独立版用户**：直接双击根目录下的 **`CapsWriter.exe`** 即可。
+   - **源码/Python 环境用户**：双击 **`启动 CapsWriter 智能控制中心.bat`**。
 
-解压后运行包内的 `CapsWriter.exe`。
+---
 
-### 环境要求
+### 方式二：首次完整安装（新用户懒人推荐）
 
-如果要从源码运行，需要准备：
+初次接触本工具的用户，推荐直接从 GitHub Releases 下载打包好的独立运行包：
 
-- Windows
+- 前往 [GitHub Releases](../../releases) 页面下载：
+  - `CapsWriter-Full.zip`：完整版，内置本地 ASR 模型，解压后即可开箱即用。
+  - `CapsWriter-Lite.zip`：精简版，不内置 ASR 模型，体积更小；首次运行可在“语音识别与硬件”页面按指引下载模型并放入 `models/` 目录。
+- 解压后双击运行包内的 **`CapsWriter.exe`** 即可。
+
+> **提示**：日常使用中遇到小版本修复，直接按上述**方式一**更新代码即可，极速便捷；未来只有在重大功能重构或依赖环境升级的大版本时，才需要重新下载新的发布包。
+
+---
+
+### 方式三：从源码环境部署（开发者 / Python 运行）
+
+#### 环境要求
+- Windows 10 / 11
 - Python 3.11
-- 本地 ASR 模型文件
+- 本地 ASR 模型文件（存放在 `models/` 对应子目录下）
 
-### 安装 Python 依赖
-
+#### 安装依赖
 ```powershell
 pip install -r requirements-client.txt
 pip install -r requirements-server.txt
 ```
 
-这一步只安装 Python 依赖。语音识别还需要准备本地模型文件。
+#### 准备模型
+将语音模型文件放入 `models/` 对应目录。也可在控制中心“语音识别与硬件”页面查看模型推荐与下载入口。
 
-### 准备模型
-
-将模型文件放入 `models/` 下对应目录。也可以在控制中心“语音识别与硬件”页面打开模型配置指引，查看推荐模型、下载地址和模型目录入口。
-
-### 启动
-
+#### 启动
+终端运行：
 ```powershell
 python run_app.py
 ```
-
-Windows 下也可以双击：
-
+或在文件资源管理器中直接双击：
 ```text
 启动 CapsWriter 智能控制中心.bat
 ```
-
-启动后会同时管理 ASR 服务端、听写客户端、控制中心 GUI 和托盘菜单。
+启动后会同时拉起 ASR 服务端、听写客户端、控制中心 GUI 和系统托盘菜单。
 
 ## 基本使用
 

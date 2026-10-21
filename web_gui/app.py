@@ -1533,9 +1533,9 @@ def main_page():
                                             num_input = ui.number(
                                                 label='手动输入保存条数上限',
                                                 value=init_num,
-                                                min=10,
+                                                min=1,
                                                 max=50000,
-                                                step=10
+                                                step=1
                                             ).props('outlined dense').classes('w-full text-sm bg-white dark:bg-slate-900')
                                             num_input.set_visibility(init_mode == 'custom')
 
@@ -1561,7 +1561,7 @@ def main_page():
                                                     new_max_items = 0
                                                 else:
                                                     try:
-                                                        new_max_items = max(10, int(num_input.value or 200))
+                                                        new_max_items = max(1, int(num_input.value or 200))
                                                     except (ValueError, TypeError):
                                                         new_max_items = 200
 
