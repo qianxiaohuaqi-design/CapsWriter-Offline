@@ -2,11 +2,12 @@
   "schema": "capswriter.v1.interaction-acceptance.draft-r1",
   "version": 1,
   "status": "design_only_not_approved",
-  "source_commit": "3305747f48c433e96c99bc5b281de37062ab3b94",
+  "source_commit": "2144d431e0a17bb27b04dcc0e9fd02e2e2379764",
   "notes": [
     "Semantic acceptance records only; not Python API contract.",
     "Read local Codex M1-A before implementing.",
-    "No network, filesystem, OS or Git operations triggered by these records."
+    "No network, filesystem, OS or Git operations triggered by these records.",
+    "2026-11-02 design maintenance: four source-informed test cases added, not executed."
   ],
   "universal_invariants": [
     "no_fake_ready_from_port_or_pid",
@@ -622,6 +623,103 @@
       ],
       "protect": [
         "private_artifacts"
+      ],
+      "tier": "C0"
+    },
+    {
+      "id": "WF-03",
+      "area": "first_run",
+      "action": "no_model_gui_during_asr_failure",
+      "pre": [
+        "no_model_or_corrupted_model",
+        "asr_worker_cannot_load"
+      ],
+      "positive": [
+        "gui_launches",
+        "settings_history_backup_wizard_accessible"
+      ],
+      "negative": [
+        "no_fake_ready_or_infinite_restart"
+      ],
+      "cancel": [
+        "skip_without_data_loss"
+      ],
+      "protect": [
+        "existing_models",
+        "history",
+        "configuration"
+      ],
+      "tier": "C0"
+    },
+    {
+      "id": "SV-04",
+      "area": "service",
+      "action": "foreign_process_occupies_local_ports",
+      "pre": [
+        "port_6016_or_6017_held_by_foreign_process"
+      ],
+      "positive": [
+        "detect_ownership_conflict"
+      ],
+      "negative": [
+        "no_unrelated_pid_kill",
+        "no_fake_ready"
+      ],
+      "cancel": [
+        "foreign_process_unchanged"
+      ],
+      "protect": [
+        "unrelated_processes"
+      ],
+      "tier": "C0"
+    },
+    {
+      "id": "FT-05",
+      "area": "transcription",
+      "action": "preserve_colliding_source_side_outputs",
+      "pre": [
+        "source_side_txt_json_srt_exist"
+      ],
+      "positive": [
+        "isolated_workdir",
+        "owned_output_dir"
+      ],
+      "negative": [
+        "source_side_files_same_hash_after_failure"
+      ],
+      "cancel": [
+        "source_side_files_same_hash"
+      ],
+      "protect": [
+        "source_media",
+        "old_txt",
+        "old_json",
+        "old_srt"
+      ],
+      "tier": "C0"
+    },
+    {
+      "id": "CF-04",
+      "area": "config",
+      "action": "config_import_failure_injected_halfway",
+      "pre": [
+        "backup_created",
+        "permission_error_halfway"
+      ],
+      "positive": [
+        "rollback_verified_or_partial_recovery_report"
+      ],
+      "negative": [
+        "no_false_success",
+        "api_keys_preserved"
+      ],
+      "cancel": [
+        "source_hash_unchanged_before_commit"
+      ],
+      "protect": [
+        "old_config",
+        "hotwords",
+        "private_keys"
       ],
       "tier": "C0"
     }
