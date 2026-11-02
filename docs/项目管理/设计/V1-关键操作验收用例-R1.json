@@ -1,0 +1,727 @@
+{
+  "schema": "capswriter.v1.interaction-acceptance.draft-r1",
+  "version": 1,
+  "status": "design_only_not_approved",
+  "source_commit": "2144d431e0a17bb27b04dcc0e9fd02e2e2379764",
+  "notes": [
+    "Semantic acceptance records only; not Python API contract.",
+    "Read local Codex M1-A before implementing.",
+    "No network, filesystem, OS or Git operations triggered by these records.",
+    "2026-11-02 design maintenance: four source-informed test cases added, not executed."
+  ],
+  "universal_invariants": [
+    "no_fake_ready_from_port_or_pid",
+    "no_data_delete_without_scoped_confirmation",
+    "request_identity_and_no_stale_events",
+    "cancel_requested_is_not_cancelled",
+    "download_verified_is_not_worker_ready",
+    "no_automatic_second_model_switch",
+    "no_wrong_window_text_injection",
+    "preserve_existing_ui_and_functions"
+  ],
+  "cases": [
+    {
+      "id": "WF-01",
+      "area": "first_run",
+      "action": "no_model_launch",
+      "pre": [
+        "gui_startable"
+      ],
+      "positive": [
+        "show_wizard",
+        "gui_navigation_available"
+      ],
+      "negative": [
+        "hardware_detection_fail_can_continue"
+      ],
+      "cancel": [
+        "skip_retains_data"
+      ],
+      "protect": [
+        "old_configuration",
+        "old_models"
+      ],
+      "tier": "C0"
+    },
+    {
+      "id": "WF-02",
+      "area": "first_run",
+      "action": "resume_wizard",
+      "pre": [
+        "wizard_progress_saved"
+      ],
+      "positive": [
+        "revalidate_and_resume"
+      ],
+      "negative": [
+        "unknown_model_requires_review"
+      ],
+      "cancel": [
+        "exit_no_rollback_verified_install"
+      ],
+      "protect": [
+        "old_configuration"
+      ],
+      "tier": "C0"
+    },
+    {
+      "id": "MD-01",
+      "area": "model",
+      "action": "download_model",
+      "pre": [
+        "user_confirmed_network",
+        "trusted_source",
+        "disk_available"
+      ],
+      "positive": [
+        "download_to_verification",
+        "not_ready_yet"
+      ],
+      "negative": [
+        "keep_previous_model",
+        "recoverable_cache"
+      ],
+      "cancel": [
+        "cancelling_until_stopped"
+      ],
+      "protect": [
+        "active_model",
+        "unknown_files"
+      ],
+      "tier": "C0"
+    },
+    {
+      "id": "MD-02",
+      "area": "model",
+      "action": "resume_download",
+      "pre": [
+        "source_identity_match",
+        "range_supported"
+      ],
+      "positive": [
+        "safe_resume"
+      ],
+      "negative": [
+        "restart_download_instead_of_unsafe_append"
+      ],
+      "cancel": [
+        "remain_paused_when_confirmed"
+      ],
+      "protect": [
+        "cached_verified_files"
+      ],
+      "tier": "C0"
+    },
+    {
+      "id": "MD-03",
+      "area": "model",
+      "action": "verify_install",
+      "pre": [
+        "download_complete",
+        "trusted_hash",
+        "safe_layout"
+      ],
+      "positive": [
+        "verified_installed_not_worker_ready"
+      ],
+      "negative": [
+        "old_model_unchanged"
+      ],
+      "cancel": [
+        "stop_at_atomic_safe_point"
+      ],
+      "protect": [
+        "last_good_model",
+        "manual_directories"
+      ],
+      "tier": "C0"
+    },
+    {
+      "id": "MD-04",
+      "area": "model",
+      "action": "activate_first_model",
+      "pre": [
+        "no_active_model",
+        "installed_verified"
+      ],
+      "positive": [
+        "worker_ready_then_active"
+      ],
+      "negative": [
+        "clear_pending_no_fake_ready"
+      ],
+      "cancel": [
+        "do_not_overwrite_last_good"
+      ],
+      "protect": [
+        "old_configuration"
+      ],
+      "tier": "C0"
+    },
+    {
+      "id": "MD-05",
+      "area": "model",
+      "action": "switch_active_model",
+      "pre": [
+        "target_verified",
+        "no_unconfirmed_active_task"
+      ],
+      "positive": [
+        "new_worker_ready",
+        "update_active_and_last_good"
+      ],
+      "negative": [
+        "restore_old_worker_or_report_recovery_failure"
+      ],
+      "cancel": [
+        "restore_previous_state"
+      ],
+      "protect": [
+        "last_good_model",
+        "active_dictation_result"
+      ],
+      "tier": "C0"
+    },
+    {
+      "id": "DI-01",
+      "area": "dictation",
+      "action": "start_recording",
+      "pre": [
+        "worker_ready",
+        "client_connected",
+        "microphone_allowed"
+      ],
+      "positive": [
+        "record_then_transcribe_with_turn_id"
+      ],
+      "negative": [
+        "no_random_text_written"
+      ],
+      "cancel": [
+        "stop_recording_and_release_input"
+      ],
+      "protect": [
+        "target_window",
+        "existing_clipboard"
+      ],
+      "tier": "C0"
+    },
+    {
+      "id": "DI-02",
+      "area": "dictation",
+      "action": "confirm_output",
+      "pre": [
+        "current_turn",
+        "valid_target_window"
+      ],
+      "positive": [
+        "safe_output_attempt"
+      ],
+      "negative": [
+        "keep_text_for_copy",
+        "no_wrong_window_paste"
+      ],
+      "cancel": [
+        "close_preview_not_other_turn"
+      ],
+      "protect": [
+        "edited_text",
+        "clipboard"
+      ],
+      "tier": "C0"
+    },
+    {
+      "id": "DI-03",
+      "area": "dictation",
+      "action": "edit_preview",
+      "pre": [
+        "preview_visible"
+      ],
+      "positive": [
+        "disable_auto_close_for_turn"
+      ],
+      "negative": [
+        "preserve_edited_text_on_focus_loss"
+      ],
+      "cancel": [
+        "explicit_user_close_only"
+      ],
+      "protect": [
+        "edited_text"
+      ],
+      "tier": "C0"
+    },
+    {
+      "id": "AI-01",
+      "area": "ai",
+      "action": "apply_optional_ai",
+      "pre": [
+        "api_profile_valid",
+        "user_opted_in"
+      ],
+      "positive": [
+        "show_ai_result_for_same_turn"
+      ],
+      "negative": [
+        "fallback_to_local_asr_text"
+      ],
+      "cancel": [
+        "ignore_late_response"
+      ],
+      "protect": [
+        "api_key",
+        "user_edited_text"
+      ],
+      "tier": "C0"
+    },
+    {
+      "id": "FT-01",
+      "area": "transcription",
+      "action": "start_batch",
+      "pre": [
+        "source_readable",
+        "asr_worker_ready",
+        "output_writable"
+      ],
+      "positive": [
+        "per_file_result_verified"
+      ],
+      "negative": [
+        "per_file_retry",
+        "batch_not_false_success"
+      ],
+      "cancel": [
+        "cancel_target_task_then_confirm"
+      ],
+      "protect": [
+        "source_media",
+        "existing_subtitles"
+      ],
+      "tier": "C0"
+    },
+    {
+      "id": "FT-02",
+      "area": "transcription",
+      "action": "cancel_task",
+      "pre": [
+        "task_active"
+      ],
+      "positive": [
+        "confirmed_cancelled"
+      ],
+      "negative": [
+        "report_cancel_not_confirmed"
+      ],
+      "cancel": [
+        "wait_for_process_and_worker_ack"
+      ],
+      "protect": [
+        "source_media",
+        "other_tasks"
+      ],
+      "tier": "C0"
+    },
+    {
+      "id": "FT-03",
+      "area": "transcription",
+      "action": "restart_interrupted_file",
+      "pre": [
+        "task_interrupted"
+      ],
+      "positive": [
+        "new_attempt_from_file_start"
+      ],
+      "negative": [
+        "old_completed_results_remain"
+      ],
+      "cancel": [
+        "keep_queue_metadata"
+      ],
+      "protect": [
+        "previous_outputs"
+      ],
+      "tier": "C1"
+    },
+    {
+      "id": "FT-04",
+      "area": "transcription",
+      "action": "rebuild_srt",
+      "pre": [
+        "paired_txt_json",
+        "reliable_timestamps"
+      ],
+      "positive": [
+        "new_srt_version"
+      ],
+      "negative": [
+        "old_srt_kept",
+        "explain_alignment_limits"
+      ],
+      "cancel": [
+        "no_partial_overwrite"
+      ],
+      "protect": [
+        "old_srt",
+        "source_media"
+      ],
+      "tier": "C0"
+    },
+    {
+      "id": "CF-01",
+      "area": "config",
+      "action": "save_hot_rules",
+      "pre": [
+        "valid_rules",
+        "base_revision_matches"
+      ],
+      "positive": [
+        "atomic_save_and_verify"
+      ],
+      "negative": [
+        "keep_original_and_report_conflict"
+      ],
+      "cancel": [
+        "no_disk_change"
+      ],
+      "protect": [
+        "old_rules"
+      ],
+      "tier": "C0"
+    },
+    {
+      "id": "CF-02",
+      "area": "config",
+      "action": "export_config",
+      "pre": [
+        "allowlisted_fields"
+      ],
+      "positive": [
+        "verified_export_without_keys"
+      ],
+      "negative": [
+        "no_incomplete_success_file"
+      ],
+      "cancel": [
+        "no_source_change"
+      ],
+      "protect": [
+        "api_keys",
+        "recordings",
+        "history",
+        "models"
+      ],
+      "tier": "C0"
+    },
+    {
+      "id": "CF-03",
+      "area": "config",
+      "action": "import_config",
+      "pre": [
+        "schema_valid",
+        "preview_confirmed",
+        "backup_created"
+      ],
+      "positive": [
+        "apply_and_readback_verify"
+      ],
+      "negative": [
+        "rollback_all_or_report_recovery_gap"
+      ],
+      "cancel": [
+        "no_change_before_commit"
+      ],
+      "protect": [
+        "existing_private_keys",
+        "old_configuration"
+      ],
+      "tier": "C0"
+    },
+    {
+      "id": "DT-01",
+      "area": "data",
+      "action": "delete_selected_data",
+      "pre": [
+        "exact_owned_paths",
+        "user_confirmed"
+      ],
+      "positive": [
+        "selected_only_deleted"
+      ],
+      "negative": [
+        "per_file_failed_reported"
+      ],
+      "cancel": [
+        "no_deletion"
+      ],
+      "protect": [
+        "source_media",
+        "unknown_files",
+        "unselected_data"
+      ],
+      "tier": "C0"
+    },
+    {
+      "id": "SV-01",
+      "area": "service",
+      "action": "restart_component",
+      "pre": [
+        "process_identity_verified",
+        "active_tasks_safely_handled"
+      ],
+      "positive": [
+        "new_session_ready_verified"
+      ],
+      "negative": [
+        "no_fake_ready",
+        "no_unrelated_pid_kill"
+      ],
+      "cancel": [
+        "abort_before_disruptive_step"
+      ],
+      "protect": [
+        "active_tasks",
+        "unrelated_processes"
+      ],
+      "tier": "C0"
+    },
+    {
+      "id": "SV-02",
+      "area": "service",
+      "action": "close_gui",
+      "pre": [
+        "background_ownership_checked"
+      ],
+      "positive": [
+        "tray_running_or_explicit_safe_exit"
+      ],
+      "negative": [
+        "warn_if_background_not_guaranteed"
+      ],
+      "cancel": [
+        "stay_in_gui"
+      ],
+      "protect": [
+        "running_transcription",
+        "downloads"
+      ],
+      "tier": "C0"
+    },
+    {
+      "id": "SV-03",
+      "area": "service",
+      "action": "full_exit",
+      "pre": [
+        "user_confirmed"
+      ],
+      "positive": [
+        "save_recoverable_tasks",
+        "stop_owned_processes"
+      ],
+      "negative": [
+        "report_partial_shutdown"
+      ],
+      "cancel": [
+        "stay_running_until_safe_boundary"
+      ],
+      "protect": [
+        "user_data",
+        "unrelated_processes"
+      ],
+      "tier": "C0"
+    },
+    {
+      "id": "UP-01",
+      "area": "release",
+      "action": "check_for_updates",
+      "pre": [
+        "user_action_or_opt_in",
+        "trusted_release_channel"
+      ],
+      "positive": [
+        "display_verified_version"
+      ],
+      "negative": [
+        "show_unable_to_check_not_latest"
+      ],
+      "cancel": [
+        "no_install"
+      ],
+      "protect": [
+        "installed_app",
+        "user_data"
+      ],
+      "tier": "C1"
+    },
+    {
+      "id": "UP-02",
+      "area": "release",
+      "action": "manual_upgrade",
+      "pre": [
+        "verified_release_artifact",
+        "user_confirmed",
+        "tasks_safe"
+      ],
+      "positive": [
+        "new_version_boot_checked"
+      ],
+      "negative": [
+        "recover_previous_version_data"
+      ],
+      "cancel": [
+        "retain_previous_version_before_commit"
+      ],
+      "protect": [
+        "user_data",
+        "models",
+        "license_files"
+      ],
+      "tier": "C0"
+    },
+    {
+      "id": "UP-03",
+      "area": "release",
+      "action": "uninstall",
+      "pre": [
+        "explicit_user_action",
+        "paths_owned"
+      ],
+      "positive": [
+        "program_removed_data_retained_by_default"
+      ],
+      "negative": [
+        "keep_user_data"
+      ],
+      "cancel": [
+        "no_removal"
+      ],
+      "protect": [
+        "personal_config",
+        "models",
+        "history",
+        "audio",
+        "unknown_paths"
+      ],
+      "tier": "C0"
+    },
+    {
+      "id": "UP-04",
+      "area": "website",
+      "action": "enable_download_link",
+      "pre": [
+        "actual_release_verified",
+        "sha256_available",
+        "license_reviewed"
+      ],
+      "positive": [
+        "verified_matching_url"
+      ],
+      "negative": [
+        "disabled_not_published"
+      ],
+      "cancel": [
+        "no_remote_publication"
+      ],
+      "protect": [
+        "private_artifacts"
+      ],
+      "tier": "C0"
+    },
+    {
+      "id": "WF-03",
+      "area": "first_run",
+      "action": "no_model_gui_during_asr_failure",
+      "pre": [
+        "no_model_or_corrupted_model",
+        "asr_worker_cannot_load"
+      ],
+      "positive": [
+        "gui_launches",
+        "settings_history_backup_wizard_accessible"
+      ],
+      "negative": [
+        "no_fake_ready_or_infinite_restart"
+      ],
+      "cancel": [
+        "skip_without_data_loss"
+      ],
+      "protect": [
+        "existing_models",
+        "history",
+        "configuration"
+      ],
+      "tier": "C0"
+    },
+    {
+      "id": "SV-04",
+      "area": "service",
+      "action": "foreign_process_occupies_local_ports",
+      "pre": [
+        "port_6016_or_6017_held_by_foreign_process"
+      ],
+      "positive": [
+        "detect_ownership_conflict"
+      ],
+      "negative": [
+        "no_unrelated_pid_kill",
+        "no_fake_ready"
+      ],
+      "cancel": [
+        "foreign_process_unchanged"
+      ],
+      "protect": [
+        "unrelated_processes"
+      ],
+      "tier": "C0"
+    },
+    {
+      "id": "FT-05",
+      "area": "transcription",
+      "action": "preserve_colliding_source_side_outputs",
+      "pre": [
+        "source_side_txt_json_srt_exist"
+      ],
+      "positive": [
+        "isolated_workdir",
+        "owned_output_dir"
+      ],
+      "negative": [
+        "source_side_files_same_hash_after_failure"
+      ],
+      "cancel": [
+        "source_side_files_same_hash"
+      ],
+      "protect": [
+        "source_media",
+        "old_txt",
+        "old_json",
+        "old_srt"
+      ],
+      "tier": "C0"
+    },
+    {
+      "id": "CF-04",
+      "area": "config",
+      "action": "config_import_failure_injected_halfway",
+      "pre": [
+        "backup_created",
+        "permission_error_halfway"
+      ],
+      "positive": [
+        "rollback_verified_or_partial_recovery_report"
+      ],
+      "negative": [
+        "no_false_success",
+        "api_keys_preserved"
+      ],
+      "cancel": [
+        "source_hash_unchanged_before_commit"
+      ],
+      "protect": [
+        "old_config",
+        "hotwords",
+        "private_keys"
+      ],
+      "tier": "C0"
+    }
+  ]
+}
