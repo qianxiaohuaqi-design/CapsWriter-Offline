@@ -7,6 +7,7 @@ LLM 角色加载器
 3. 错误处理和验证
 """
 
+import importlib.util
 import sys
 from pathlib import Path
 from typing import Dict
@@ -22,6 +23,27 @@ class RoleLoader:
         from config_client import BASE_DIR
         self.llm_dir = Path(BASE_DIR) / 'LLM'
         self.load_all_roles()
+
+    def _load_module(self, file_path: Path):
+        path = file_path.resolve()
+        if path.parent != self.llm_dir.resolve() or path.suffix != '.py' or path.name == '__init__.py':
+            raise ValueError('不是角色目录下的角色文件')
+        module_name = f'LLM.{path.stem}'
+        spec = importlib.util.spec_from_file_location(module_name, path)
+        module = importlib.util.module_from_spec(spec)
+        # Load the editable profile directly and avoid stale same-second bytecode.
+        code = compile(path.read_bytes(), str(path), 'exec')
+        previous = sys.modules.get(module_name)
+        sys.modules[module_name] = module
+        try:
+            exec(code, vars(module))
+        except Exception:
+            if previous is None:
+                sys.modules.pop(module_name, None)
+            else:
+                sys.modules[module_name] = previous
+            raise
+        return module_name, module
 
     def register_role(self, module_name: str, module) -> str:
         """从模块注册角色
@@ -86,12 +108,7 @@ class RoleLoader:
                 continue
 
             try:
-                module_name = f"LLM.{file_path.stem}"
-
-                if module_name in sys.modules:
-                    del sys.modules[module_name]
-
-                module = __import__(module_name, fromlist=[''])
+                module_name, module = self._load_module(file_path)
 
                 if not hasattr(module, 'provider') or not hasattr(module, 'model'):
                     errors.append({
@@ -126,12 +143,7 @@ class RoleLoader:
             if file_path.suffix != '.py' or file_path.name == '__init__.py':
                 return False, "不是角色文件"
 
-            module_name = f"LLM.{file_path.stem}"
-
-            if module_name in sys.modules:
-                del sys.modules[module_name]
-
-            module = __import__(module_name, fromlist=[''])
+            module_name, module = self._load_module(file_path)
 
             if not hasattr(module, 'provider') or not hasattr(module, 'model'):
                 return False, "缺少必需字段"

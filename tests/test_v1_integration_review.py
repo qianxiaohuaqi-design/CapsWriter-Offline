@@ -331,6 +331,23 @@ class ProcessDiscoveryTests(unittest.TestCase):
         foreign.cwd.assert_not_called()
 
 
+class RuntimeRoleTests(unittest.TestCase):
+    def test_load_and_reload_use_the_writable_role_file(self):
+        from core.client.llm.llm_role_loader import RoleLoader
+
+        with tempfile.TemporaryDirectory() as temporary, patch('config_client.BASE_DIR', temporary):
+            role = Path(temporary) / 'LLM' / '小助理.py'
+            role.parent.mkdir()
+            config = "name = '本地测试角色'\nprovider = 'openai'\nmodel = 'fixture-1'\n"
+            role.write_text(config, encoding='utf-8')
+            loader = RoleLoader()
+            self.assertEqual(loader.roles_registry['本地测试角色'].model, 'fixture-1')
+            role.write_text(config.replace('fixture-1', 'fixture-2'), encoding='utf-8')
+            ok, error = loader.reload_role(str(role))
+            self.assertTrue(ok, error)
+            self.assertEqual(loader.roles_registry['本地测试角色'].model, 'fixture-2')
+
+
 class ConfigurationBoundaryTests(unittest.TestCase):
     @staticmethod
     def namespace():
