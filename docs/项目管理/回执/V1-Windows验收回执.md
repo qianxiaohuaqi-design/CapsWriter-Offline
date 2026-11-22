@@ -38,7 +38,7 @@
 - `python -m unittest discover -s tests -p "test_v1_*.py" -v` 在独立 Python 3.11 x64 环境执行，共 134 项，130 PASS、0 FAIL、4 SKIP。跳过项受本机创建符号链接的权限限制。
 - `python tools/verify_v1_ui.py` 的六项流程通过，覆盖无模型引导、跳过和继续、麦克风未测试状态、重开及同后台所有者。事件来自 NiceGUI 模拟操作，原生窗口、桌面焦点、热键另行验收。
 - 实际 Windows Worker 由可核验的独立进程执行。在真实 WebSocket 上传公开 MP3，用 FFmpeg 解码后完成识别、保存 TXT/JSON/SRT/MERGE、同任务从头重试和独立 SRT 重建。另运行公开样本派生的 WAV 和 MP4 队列，确认取消从 `cancelling` 到 `cancelled`，MP4 随后完成，重新打开队列保留结果。故意提供不可解码音频时任务明确失败。成功、失败、取消和单项重试后，源媒体、源旁同名旧字幕和首个 attempt 产物的哈希均一致。 [公开音频及其固定来源](https://raw.githubusercontent.com/HaujetZhao/SenseVoice-ONNX/4d7bce67e86b4049db1a58a6c2e2ecd34dfefd9c/test-fun.mp3)
-- 公开 MP3 为 84,140 字节，SHA-256 为 `ba5f8a9db8665afb48f1be359d4faef615dc7679165303f1e291da488469aafa`。两个旧模型分别由前序 `44bf52e5212d143a9f43f52962a87b4859b5d995` onedir Worker 启动，在相同公开 MP3 上输出非空识别。验证范围是实际包内 Worker 和 WebSocket。
+- 公开 MP3 为 84,140 字节，SHA-256 为 `ba5f8a9db8665afb48f1be359d4faef615dc7679165303f1e291da488469aafa`。最终 onedir 包内的独立 Worker 分别只读加载两个已有模型，在相同公开 MP3 上完成非空识别并生成 TXT/JSON。验证范围包括实际包内 Worker 和 WebSocket。
 - 隔离协调器先加载 SenseVoice，再确认切换 Qwen3-ASR。未确认的第二次切换被拒绝。随后加载隔离伪损坏模型，候选失败并恢复 Qwen 的真实 Worker 及默认设置。测试使用单独端口，禁用了原生听写客户端的启动。
 - 用户后续要求跳过下载，用两份已有模型继续。该要求前已完成独立 SenseVoice 下载验证：固定源完整 433,798,984 字节，1,310,720 字节时实测暂停并用同一任务继续，修复后复用同一缓存完成安装，重新校验三份文件。未继续安排下载相关桌面场景。 [固定上游资产](https://github.com/HaujetZhao/CapsWriter-Offline/releases/tag/models) [模型来源与许可](V1-模型来源与下载验证-20261122.md)
 - 生产配置代码在隔离档案上实测了预览不写盘、预览过期拦截、确认保存并重新读取、导出脱敏、非法热词规则拒绝和外部文件修改保护。四个内置 AI 角色通过真实 OpenAI SDK 对本机模拟 SSE 服务发出请求，合成历史经限额保留三条，导出无测试密钥。手动更新实际访问项目 GitHub API，当前渠道返回 `up_to_date`，无安装资产。网站 Node 检查通过。
@@ -72,8 +72,8 @@
 | SV-02 | NOT_RUN | IPC 模拟证实重开复用后台。原生关闭和下载字节对比按用户要求跳过 |
 | SV-03 | NOT_RUN | IPC 安全结束及退出标记已验证。真实托盘完全退出和活跃任务排空待用户操作 |
 | UP-01 | PASS | 实际访问官方 GitHub API，当前渠道无较新可验证资产。离线/错误用例自动化通过 |
-| UP-02 | NOT_RUN | 最小 PyInstaller 前置验证已执行。升级和退出互斥仍待干净环境 |
-| UP-03 | NOT_RUN | 安装器无数据清理段。干净环境实装、卸载后模型/数据哈希核对待验 |
+| UP-02 | NOT_RUN | 最小包和最终制品已构建。当前试用仍持有应用互斥锁，实际覆盖升级未执行 |
+| UP-03 | NOT_RUN | 当前试用仍持有应用互斥锁，未启动安装流程。干净环境实装和卸载后数据哈希待核对 |
 | UP-04 | NOT_RUN | 网站技术检查通过，未获公开分发授权，下载按钮禁用 |
 | WF-03 | NOT_RUN | 真实原生窗口过程和本机页面已验证一部分。完整打包界面故障修复流程待验 |
 | SV-04 | NOT_RUN | 未占用用户现役端口来故障注入。自动化覆盖未知端口路径和恢复失败 |
@@ -90,13 +90,30 @@
 | G3 日常听写 | NOT_RUN | 等待用户完成麦克风、热键、IME、所有输出方式和焦点验收 |
 | G4 文件转写 | NOT_RUN | 实际 Windows 场景覆盖成功、批量、取消、重试和 SRT。等在途原生重连及听写竞争 |
 | G5 数据与配置 | NOT_RUN | 数据保护自动化与生产接口验证通过。等待原生保存刷新及完整历史/日记回归 |
-| G6 Windows 发行 | NOT_RUN | 烟测 Windows 包和完整构建均有实测或构建记录。干净 Win10/11 安装、升级和卸载未全部执行 |
-| G7-T 官网技术 | NOT_RUN | Node 静态校验已过，发行信息以最终构建清单绑定 |
+| G6 Windows 发行 | NOT_RUN | 最终 Portable 移动和安装布局默认路径探测通过。实际安装器因试用进程持锁留待运行，未取得干净 Win10/11 验证环境 |
+| G7-T 官网技术 | NOT_RUN | Node 静态校验已过，最终本地构建元数据已核对。此次六张 Windows 脱敏实拍待补 |
 | G7-P 公开下载 | NOT_RUN | 未发布，公开字节和签名没有验收 |
-| G8 证据完整 | NOT_RUN | 关键操作和平台限制逐条列明。需补用户操作、原生截图和最终制品验证 |
+| G8 证据完整 | NOT_RUN | 已记录执行证据和最终制品。需补用户手动验收、截图以及安装环境证据 |
 
-真实原生截图由用户在试用窗口操作后确认。白屏复现图属于故障证据。通用、模型中心、向导、字幕任务、服务诊断和编辑浮层的脱敏截图待补，旧官网图不作为本次证据。
+修复后原生 WebView2 进程与试用控制中心建立实际连接。查询到了 Windows 默认音频输入设备，本轮未采集用户声音。用户接管桌面操作。白屏复现图属于故障证据，通用、模型中心、向导、字幕任务、服务诊断和编辑浮层的脱敏截图待补，旧官网图不作为本次证据。
 
-最小包先完成真实 PyInstaller onedir，包内协调器在无模型且显式隔离数据的条件下启动、返回路径与状态并安全退出。首轮 ZIP 被依赖数据审计拦下，修复后运行完整构建。前序 Portable 在没有路径覆盖变量的子进程中解压到中文及空格路径，移动后正确重新定位数据和模型根，测试数据哈希相同。无 Portable 标记的 onedir 进程使用隔离环境的 `LOCALAPPDATA/CapsWriter` 默认根启动，程序旁未写入数据。这两次布局探测通过包内协调器入口完成。
+前置最小包完成 PyInstaller onedir。无模型时，包内协调器启动、返回路径与状态并安全退出。首轮 ZIP 被依赖数据审计拦下，修复后完成完整构建。
 
-第三方许可随构建归档在 `_internal/THIRD_PARTY`，含 Python 依赖许可清单及经哈希核验的 FFmpeg 和 GGUF 发行库资料。Windows EXE、ZIP 的最终大小、SHA-256、签名和独立产物验收结论待最终构建刷新。
+最终 Portable 校验了整个 ZIP 的 CRC。解压到中文及空格路径后启动包内协调器，退出并移动整个程序目录重开。子进程清除了 CapsWriter 路径覆盖，观察到两次默认路径与新位置一致，测试数据 SHA-256 保持一致。无 Portable 标记的最终 onedir 使用隔离环境的 `LOCALAPPDATA/CapsWriter` 默认根，程序目录旁未生成数据。安装、升级、卸载验证因用户试用仍持有 `CapsWriter.Offline.ControlCenter` 互斥锁留待执行。
+
+### 本地发行候选
+
+完整构建返回 0。清洁暂存 295 个文件，最终包审计清单含 3,298 个文件。再次读取 EXE 和 ZIP 字节的大小与 SHA-256 均匹配 `release-manifest.json` 和 `SHA256SUMS.txt`。清单仍标为 `candidate`，保留 `windows_validated=false`。
+
+| 文件 | 字节 | SHA-256 | 签名状态 |
+| --- | ---: | --- | --- |
+| `CapsWriter-Offline-1.0.0-rc.1-Windows-x64-Setup.exe` | 227,436,193 | `304005b19a223fbd00991fbb0441c2a93c2a464e209ccbd50b7ed40d14ddbbbf` | Windows Authenticode `NotSigned` |
+| `CapsWriter-Offline-1.0.0-rc.1-Windows-x64-Portable.zip` | 375,281,426 | `fbee7c30ad8ea624bc8cfa5ca591362a32d5277dce2626c81aae45a1c840b2ff` | ZIP 校验和及 CRC 已核对，未单独签名 |
+
+- 构建输出中包含 `_internal/THIRD_PARTY/python-inventory.json`，记录构建虚拟环境中 119 项 Python 分发包的版本和可获取的许可文件。第三方二进制清单位于 `_internal/packaging/vendor_inventory.json`，共 62 个经核验的文件。制品包含程序及依赖资源，SenseVoice 和 Qwen3-ASR 权重仅从本机原目录读取。
+- FFmpeg/ffprobe 使用 `n8.1.3-39-g660b5aa7db` Windows x64 LGPL 构建。上游归档 SHA-256 `47d2e37e5ab9dc775cf5e5e595a817a11534c2fd6533a16db476f45dd8a7ce83`。包内 `FFmpeg-LICENSE.txt`，运行时使用 LGPL v3 或更高版本许可。 [固定上游发行](https://github.com/FFmpeg-Builds/FFmpeg-Builds/releases/tag/autobuild-2026-11-21-12-37)
+- 三个 GGUF 引擎使用其源码指定的 llama.cpp `b7798` Win x64 Vulkan 发行。上游归档 SHA-256 `d478b7070dd12a5c64478a398352e1f880d488c4c346a8f00e7051935ef6f8e8`。包内附 llama.cpp MIT 和 LLVM OpenMP 许可文件。相关依赖的公开再分发核验仍属发行门禁。 [固定上游发行](https://github.com/ggml-org/llama.cpp/releases/tag/b7798)
+
+### 待用户验收
+
+先在试用窗口登记本地 SenseVoice 并确认加载，用空白记事本试实际快捷键和中文输入。随后测试确认输出、编辑浮层、错焦点保护和托盘重开，保留六张脱敏截图。完全退出试用窗口并确认事务停止后，才能执行本机当前用户的安装、升级和卸载测试。干净 Win10/11、真实 AI 提供商和公开下载各保留未验收状态。
