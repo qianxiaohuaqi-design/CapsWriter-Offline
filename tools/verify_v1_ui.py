@@ -8,11 +8,11 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import logging
 import os
 from pathlib import Path
 import sys
 import tempfile
-import time
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -97,13 +97,22 @@ def main():
             result = asyncio.run(exercise())
         finally:
             from core.product import bridge
+            import psutil
             try:
+                owner = psutil.Process(bridge.descriptor()['pid'])
+                parent = owner.parent()
+                # The Windows venv redirector inherits the startup log handle.
+                # Wait for it as well only when it launched this same command.
+                redirector = parent if parent and parent.cmdline()[1:] == owner.cmdline()[1:] else None
                 bridge.request('shutdown', timeout=3)
-                deadline = time.monotonic() + 12
-                while time.monotonic() < deadline and not (Path(temporary) / 'runtime' / 'exit-ready.json').exists():
-                    time.sleep(0.1)
-            except Exception:
+                owner.wait(timeout=12)
+                if redirector:
+                    redirector.wait(timeout=4)
+            except (RuntimeError, psutil.NoSuchProcess):
                 pass
+            # On Windows the app's file handlers keep the temporary profile
+            # locked until closed, even after the simulated page disconnects.
+            logging.shutdown()
         if args.output:
             args.output.parent.mkdir(parents=True, exist_ok=True)
             args.output.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding='utf-8')

@@ -140,6 +140,17 @@ class ModelTransactions(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "校验失败"):
             manager.catalog.configuration("test-model", manager.model_root)
 
+    def test_installs_into_nested_chinese_model_root(self):
+        # A Portable installation can live well below the drive root. Leave
+        # room for staged filenames even on Windows without long paths enabled.
+        parent = self.root / "便携版 测试"
+        self.root = parent / ("nested-" + "x" * max(0, 132 - len(str(parent))))
+        manager = self.manager()
+        job = manager.start("test-model", license_accepted=True)
+        result = self.wait(manager, job["download_id"])
+        self.assertEqual(result["status"], "completed", result)
+        self.assertEqual(manager.catalog.verify_installation("test-model", manager.model_root)["integrity"], "verified")
+
     def test_checksum_reject_preserves_existing_manual_model(self):
         entry = self.entry()
         self.server.fixture["payload"] = self.server.fixture["payload"][:-1] + b"X"

@@ -23,25 +23,12 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from .models import ModelCatalog, RECEIPT_NAME, file_sha256, safe_relative
+from .storage import atomic_json
 
 
 ACTIVE = {"downloading", "verifying", "installing", "pausing", "cancelling"}
 FINAL = {"completed", "failed", "paused", "cancelled"}
 ALLOWED_SOURCE_HOSTS = {"github.com", "objects.githubusercontent.com", "release-assets.githubusercontent.com"}
-
-
-def _atomic_json(path: Path, value) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temp = path.with_name(path.name + "." + uuid.uuid4().hex + ".tmp")
-    try:
-        with temp.open("x", encoding="utf-8") as stream:
-            json.dump(value, stream, ensure_ascii=False, indent=2)
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.replace(temp, path)
-    finally:
-        if temp.exists():
-            temp.unlink()
 
 
 def _within(root: Path, path: Path) -> None:
@@ -171,7 +158,7 @@ class DownloadManager:
             self._save()
 
     def _save(self):
-        _atomic_json(self._state_path, {"schema_version": 1, "jobs": list(self._jobs.values())})
+        atomic_json(self._state_path, {"schema_version": 1, "jobs": list(self._jobs.values())})
 
     def snapshot(self) -> list[dict]:
         with self._condition:
@@ -416,7 +403,9 @@ class DownloadManager:
         staging_parent = self.model_root / ".capswriter-staging"
         _within(self.model_root, staging_parent)
         staging_parent.mkdir(exist_ok=True)
-        stage = staging_parent / (download_id + "-" + uuid.uuid4().hex)
+        # The staging directory needs uniqueness, not a second copy of the job
+        # ID. Shorter staging paths leave room for archive names on Windows.
+        stage = staging_parent / uuid.uuid4().hex
         target = self.catalog.managed_path(item["id"], self.model_root)
         _within(self.model_root, target)
         if target.exists():
@@ -437,7 +426,7 @@ class DownloadManager:
                 if not file.is_file() or file.stat().st_size == 0:
                     raise ValueError("模型压缩包缺少必要文件：" + filename)
                 hashes[filename] = file_sha256(file)
-            _atomic_json(extracted / RECEIPT_NAME, {"schema_version": 1, "model_id": item["id"],
+            atomic_json(extracted / RECEIPT_NAME, {"schema_version": 1, "model_id": item["id"],
                          "archive_sha256": item["sha256"], "files": hashes,
                          "source_url": item["url"], "license_url": item["license_url"],
                          "attribution": item.get("attribution", ""), "installed_at": time.time()})
