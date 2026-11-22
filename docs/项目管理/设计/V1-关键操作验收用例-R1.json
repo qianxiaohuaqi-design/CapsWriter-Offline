@@ -7,7 +7,8 @@
     "Semantic acceptance records only; not Python API contract.",
     "Read local Codex M1-A before implementing.",
     "No network, filesystem, OS or Git operations triggered by these records.",
-    "2026-11-02 design maintenance: four source-informed test cases added, not executed."
+    "2026-11-02 design maintenance: four source-informed test cases added, not executed.",
+    "2026-11-21 design maintenance: retain 30 main cases; add explicit subcases and contract coverage only. No Windows acceptance has run. Pending scope/background choices remain in the R2 confirmation candidate."
   ],
   "universal_invariants": [
     "no_fake_ready_from_port_or_pid",
@@ -41,7 +42,25 @@
         "old_configuration",
         "old_models"
       ],
-      "tier": "C0"
+      "tier": "C0",
+      "subcases": [
+        {
+          "name": "existing_usable_model",
+          "expect": [
+            "existing_user_enters_regular_gui",
+            "no_forced_wizard",
+            "old_settings_preserved"
+          ]
+        },
+        {
+          "name": "microphone_test_skipped",
+          "expect": [
+            "microphone_test_status_not_tested",
+            "do_not_claim_test_passed",
+            "unavailable_device_does_not_claim_dictation_available"
+          ]
+        }
+      ]
     },
     {
       "id": "WF-02",
@@ -51,7 +70,9 @@
         "wizard_progress_saved"
       ],
       "positive": [
-        "revalidate_and_resume"
+        "revalidate_and_resume",
+        "saved_step_restored_after_skip_and_reopen",
+        "revalidate_real_download_and_model_state_after_app_restart"
       ],
       "negative": [
         "unknown_model_requires_review"
@@ -71,7 +92,8 @@
       "pre": [
         "user_confirmed_network",
         "trusted_source",
-        "disk_available"
+        "disk_available",
+        "model_variant_source_license_hash_requirements_verified"
       ],
       "positive": [
         "download_to_verification",
@@ -88,7 +110,24 @@
         "active_model",
         "unknown_files"
       ],
-      "tier": "C0"
+      "tier": "C0",
+      "subcases": [
+        {
+          "name": "unverified_catalog_candidate",
+          "expect": [
+            "candidate_still_visible_with_truthful_status",
+            "one_click_download_disabled",
+            "manual_import_or_explanation_available"
+          ]
+        },
+        {
+          "name": "hardware_detection_inconclusive",
+          "expect": [
+            "conservative_manual_selection_available",
+            "no_unverified_performance_promise"
+          ]
+        }
+      ]
     },
     {
       "id": "MD-02",
@@ -134,7 +173,17 @@
         "last_good_model",
         "manual_directories"
       ],
-      "tier": "C0"
+      "tier": "C0",
+      "subcases": [
+        {
+          "name": "manual_model_import",
+          "expect": [
+            "preview_source_target_and_conflicts",
+            "unknown_layout_not_falsely_marked_verified",
+            "old_model_and_unknown_files_preserved"
+          ]
+        }
+      ]
     },
     {
       "id": "MD-04",
@@ -164,7 +213,8 @@
       "action": "switch_active_model",
       "pre": [
         "target_verified",
-        "no_unconfirmed_active_task"
+        "no_unconfirmed_active_task",
+        "user_explicitly_confirmed_switch"
       ],
       "positive": [
         "new_worker_ready",
@@ -180,7 +230,24 @@
         "last_good_model",
         "active_dictation_result"
       ],
-      "tier": "C0"
+      "tier": "C0",
+      "subcases": [
+        {
+          "name": "second_model_downloaded_without_switch_confirmation",
+          "expect": [
+            "old_model_remains_active",
+            "new_model_installed_only",
+            "existing_dictation_not_interrupted"
+          ]
+        },
+        {
+          "name": "confirmed_switch",
+          "expect": [
+            "active_model_changes_only_after_current_target_worker_ready",
+            "failed_switch_restores_old_worker_or_reports_recovery_failure"
+          ]
+        }
+      ]
     },
     {
       "id": "DI-01",
@@ -228,7 +295,17 @@
         "edited_text",
         "clipboard"
       ],
-      "tier": "C0"
+      "tier": "C0",
+      "subcases": [
+        {
+          "name": "confirmation_overlay_unavailable",
+          "expect": [
+            "no_silent_direct_typing_fallback",
+            "recognized_text_recoverable_for_copy",
+            "do_not_force_overwrite_clipboard"
+          ]
+        }
+      ]
     },
     {
       "id": "DI-03",
@@ -238,7 +315,8 @@
         "preview_visible"
       ],
       "positive": [
-        "disable_auto_close_for_turn"
+        "disable_auto_close_for_turn",
+        "edited_text_survives_view_refresh_and_page_return"
       ],
       "negative": [
         "preserve_edited_text_on_focus_loss"
@@ -272,7 +350,17 @@
         "api_key",
         "user_edited_text"
       ],
-      "tier": "C0"
+      "tier": "C0",
+      "subcases": [
+        {
+          "name": "late_ai_after_user_edit",
+          "expect": [
+            "do_not_overwrite_edited_text",
+            "do_not_inject_into_next_turn",
+            "explicit_user_adoption_required_for_late_alternative"
+          ]
+        }
+      ]
     },
     {
       "id": "FT-01",
@@ -340,7 +428,19 @@
       "protect": [
         "previous_outputs"
       ],
-      "tier": "C1"
+      "tier": "C1",
+      "subcases": [
+        {
+          "name": "restart_after_interruption",
+          "expect": [
+            "persisted_task_ids_and_queue_restored",
+            "orphaned_running_tasks_become_interrupted",
+            "completed_outputs_preserved",
+            "selected_file_retry_starts_from_beginning",
+            "no_claim_of_precise_audio_offset_resume"
+          ]
+        }
+      ]
     },
     {
       "id": "FT-04",
@@ -434,7 +534,27 @@
         "existing_private_keys",
         "old_configuration"
       ],
-      "tier": "C0"
+      "tier": "C0",
+      "subcases": [
+        {
+          "name": "invalid_or_partial_import",
+          "expect": [
+            "preview_and_backup_before_mutation",
+            "no_silent_partial_success",
+            "rollback_readback_verified_or_affected_items_reported"
+          ]
+        },
+        {
+          "name": "edit_existing_api_profile_key",
+          "expect": [
+            "explicit_profile_target",
+            "masked_secret_field",
+            "save_success_before_ui_confirmation",
+            "failed_save_preserves_previous_secret",
+            "no_false_system_encryption_claim"
+          ]
+        }
+      ]
     },
     {
       "id": "DT-01",
@@ -722,6 +842,64 @@
         "private_keys"
       ],
       "tier": "C0"
+    }
+  ],
+  "review_basis_commit": "d90f6b26ab047a832fb51c922d4e87bcadf655f3",
+  "contract_coverage": [
+    {
+      "contract_id": "WF-04",
+      "case_ids": [
+        "WF-01",
+        "DI-01"
+      ],
+      "requirement": "Microphone skipped or unavailable must not be shown as tested/passed."
+    },
+    {
+      "contract_id": "WF-05",
+      "case_ids": [
+        "MD-01"
+      ],
+      "requirement": "Candidate identity/source/variant/license/hash gate; replaces only the conflicting selector-row ID."
+    },
+    {
+      "contract_id": "MD-06",
+      "case_ids": [
+        "MD-03",
+        "MD-05"
+      ],
+      "requirement": "Manual import preview, truthful verification state, existing model preservation."
+    },
+    {
+      "contract_id": "DI-04",
+      "case_ids": [
+        "DI-02"
+      ],
+      "requirement": "Overlay failure retains text and never silently becomes direct typing."
+    },
+    {
+      "contract_id": "AI-02",
+      "case_ids": [
+        "AI-01",
+        "DI-03"
+      ],
+      "requirement": "Late AI result cannot overwrite user edits or another turn."
+    },
+    {
+      "contract_id": "DT-02",
+      "case_ids": [
+        "CF-02",
+        "CF-03",
+        "CF-04"
+      ],
+      "requirement": "Explicit profile key writes, masked display, verified save, old key protection and no false encryption claim."
+    },
+    {
+      "contract_id": "MD-07",
+      "case_ids": [
+        "DT-01"
+      ],
+      "requirement": "Dedicated model removal is not a mandatory new V1 feature; if offered, only confirmed owned non-active paths may be removed.",
+      "applicability": "only_if_model_removal_ui_is_in_scope"
     }
   ]
 }
