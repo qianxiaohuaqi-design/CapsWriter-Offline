@@ -51,10 +51,15 @@ def bootstrap() -> Path:
         (root / part).mkdir(parents=True, exist_ok=True)
     source = resource_root()
     defaults = source / 'packaging' / 'release_defaults'
-    for name in ('config_client.py', 'config_server.py', 'config_pill.py',
-                 'hot.txt', 'hot-rule.txt', 'hot-server.txt',
-                 'LLM/default.py', 'LLM/__init__.py',
-                 'web_gui/private_config.json', 'web_gui/llm_profiles.json'):
+    names = ['config_client.py', 'config_server.py', 'config_pill.py',
+             'hot.txt', 'hot-rule.txt', 'hot-server.txt',
+             'LLM/default.py', 'LLM/__init__.py',
+             'web_gui/private_config.json', 'web_gui/llm_profiles.json']
+    # Install clean, disabled built-in roles on a new profile only. Existing
+    # role edits and deliberate deletions must not be undone at every launch.
+    if not (root / 'LLM').exists():
+        names.extend(('LLM/小助理.py', 'LLM/大助理.py', 'LLM/翻译.py'))
+    for name in names:
         target = root / name
         if target.exists():
             continue

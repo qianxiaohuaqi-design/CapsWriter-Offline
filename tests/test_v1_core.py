@@ -63,6 +63,9 @@ class DataPathBoundaryTests(TemporaryDataTests):
         (defaults / 'config_client.py').write_bytes(b'new default configuration\n')
         (defaults / 'hot.txt').write_bytes(b'clean shipped hotwords\n')
         (defaults / 'web_gui' / 'private_config.json').write_bytes(b'{"llm_api_keys": {}}')
+        (defaults / 'LLM').mkdir()
+        for role in ('小助理', '大助理', '翻译'):
+            (defaults / 'LLM' / f'{role}.py').write_bytes(b'enabled = False\n')
         (self.resources / 'hot.txt').write_bytes(b'source-specific hotwords must not leak\n')
         (self.resources / 'models').mkdir()
         (self.resources / 'models' / 'model.onnx').write_bytes(b'not a distributable default')
@@ -76,7 +79,15 @@ class DataPathBoundaryTests(TemporaryDataTests):
         for file, content in protected.items():
             file.write_bytes(content)
         self.assertEqual(paths.bootstrap(), root)
+        for role in ('小助理', '大助理', '翻译'):
+            self.assertEqual((root / 'LLM' / f'{role}.py').read_bytes(), b'enabled = False\n')
+        custom_role = root / 'LLM' / '小助理.py'
+        custom_role.write_bytes(b'user-edited role\n')
+        removed_role = root / 'LLM' / '翻译.py'
+        removed_role.unlink()
         paths.bootstrap()
+        self.assertEqual(custom_role.read_bytes(), b'user-edited role\n')
+        self.assertFalse(removed_role.exists(), 'Do not recreate a user-deleted built-in role on later startups.')
         for file, content in protected.items():
             self.assertEqual(file.read_bytes(), content)
         self.assertEqual((root / 'hot.txt').read_bytes(), b'clean shipped hotwords\n')
