@@ -32,7 +32,10 @@ def data_root() -> Path:
         return resource_root()
     if is_portable():
         return app_root() / 'data'
-    return Path(os.environ.get('LOCALAPPDATA', Path.home() / '.local' / 'share')) / 'CapsWriter'
+    local_app_data = os.environ.get('LOCALAPPDATA')
+    if local_app_data:
+        return Path(local_app_data) / 'CapsWriter'
+    return Path.home() / '.local' / 'share' / 'CapsWriter'
 
 
 def model_root() -> Path:

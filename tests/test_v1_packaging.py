@@ -96,6 +96,19 @@ class StagingTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 build.audit_bundle(root)
 
+    def test_only_known_nagisa_runtime_data_can_ship_under_data(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            nagisa = root / '_internal/nagisa/data'
+            nagisa.mkdir(parents=True)
+            for extension in ('dict', 'hp', 'model'):
+                (nagisa / f'nagisa_v001.{extension}').write_bytes(b'nagisa test fixture')
+            self.assertEqual(len(build.audit_bundle(root)['files']), 3)
+            unknown = nagisa / 'unrelated.model'
+            unknown.write_bytes(b'unknown')
+            with self.assertRaises(ValueError):
+                build.audit_bundle(root)
+
     def test_literal_key_causes_hard_failure(self):
         with tempfile.TemporaryDirectory() as tmp:
             (Path(tmp) / "role.py").write_text("api_key = 'not-a-real-key-test'\n")

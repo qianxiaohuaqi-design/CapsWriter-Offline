@@ -20,6 +20,8 @@ from contextlib import ExitStack
 from pathlib import Path
 from unittest.mock import Mock, patch
 
+import psutil
+
 from core.product.coordinator import Coordinator
 from core.product.data_safety import atomic_write
 from core.product.onboarding import SetupStore
@@ -276,8 +278,13 @@ class CoordinatorIPCTests(unittest.TestCase):
                     self.assertEqual(rejected.exception.code, 403)
                     first = request('snapshot')['data']
                     second = request('snapshot')['data']
-                    self.assertEqual(first['background_owner'], child.pid)
-                    self.assertEqual(second['background_owner'], child.pid)
+                    # The Windows venv executable can be a redirector whose child
+                    # runs Python. The authenticated descriptor names the actual owner.
+                    spawned = psutil.Process(child.pid)
+                    owned_pids = {spawned.pid, *(process.pid for process in spawned.children(recursive=True))}
+                    self.assertIn(info['pid'], owned_pids)
+                    self.assertEqual(first['background_owner'], info['pid'])
+                    self.assertEqual(second['background_owner'], info['pid'])
                     self.assertEqual(first['setup']['status'], 'new')
                     self.assertFalse(first['health']['can_dictate'])
                     self.assertTrue(request('shutdown')['ok'])
@@ -287,8 +294,41 @@ class CoordinatorIPCTests(unittest.TestCase):
                     self.assertTrue((directory / 'runtime' / 'exit-ready.json').exists())
                 finally:
                     if child.poll() is None:
-                        child.terminate()
-                        child.wait(timeout=10)
+                        try:
+                            descendants = psutil.Process(child.pid).children(recursive=True)
+                            for process in reversed(descendants):
+                                try:
+                                    process.terminate()
+                                except psutil.NoSuchProcess:
+                                    pass
+                            psutil.wait_procs(descendants, timeout=5)
+                        finally:
+                            child.terminate()
+                            child.wait(timeout=10)
+
+
+class ProcessDiscoveryTests(unittest.TestCase):
+    def test_unrelated_command_arguments_do_not_resolve_paths(self):
+        foreign = Mock(pid=os.getpid() + 1)
+        foreign.cmdline.return_value = ['python.exe', 'other.py', 'network-share', 'input.txt']
+        owned = Mock(pid=os.getpid() + 2)
+        owned.cmdline.return_value = ['python.exe', str(ROOT / 'start_server.py')]
+        foreign.info = {'cmdline': foreign.cmdline.return_value}
+        owned.info = {'cmdline': owned.cmdline.return_value}
+        foreign_same_name = Mock(pid=os.getpid() + 3)
+        foreign_same_name.cmdline.return_value = ['python.exe', str(ROOT.parent / 'other/start_server.py')]
+        foreign_same_name.info = {'cmdline': foreign_same_name.cmdline.return_value}
+        original_resolve = Path.resolve
+
+        def resolve(path, *args, **kwargs):
+            self.assertNotIn('other', path.parts)
+            return original_resolve(path, *args, **kwargs)
+
+        with patch.object(process_manager, 'is_frozen_app', return_value=False), \
+             patch.object(Path, 'resolve', resolve), \
+             patch.object(psutil, 'process_iter', return_value=[foreign, foreign_same_name, owned]):
+            self.assertEqual(process_manager.find_project_processes(('start_server.py',)), [owned.pid])
+        foreign.cwd.assert_not_called()
 
 
 class ConfigurationBoundaryTests(unittest.TestCase):

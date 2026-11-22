@@ -53,11 +53,20 @@ def _owned_command(proc):
     """Require this exact application installation, not a generic Python name."""
     args = proc.cmdline()
     if is_frozen_app():
-        return Path(proc.exe()).resolve() == Path(sys.executable).resolve()
-    scripts = {str((BASE_DIR / name).resolve()) for name in
+        return os.path.normcase(os.path.abspath(proc.exe())) == os.path.normcase(os.path.abspath(sys.executable))
+    scripts = {os.path.normcase(str(BASE_DIR / name)) for name in
                ('run_app.py', 'start_client.py', 'start_server.py', 'web_gui/app.py')}
-    return any(str((Path(arg) if Path(arg).is_absolute() else Path(proc.cwd()) / arg).resolve()) in scripts
-               for arg in args[1:] if not arg.startswith('-'))
+    names = {Path(script).name.casefold() for script in scripts}
+    for arg in args[1:]:
+        path = Path(arg)
+        if arg.startswith('-') or path.name.casefold() not in names:
+            continue
+        if not path.is_absolute():
+            path = Path(proc.cwd()) / path
+        # Match the canonical launch paths without accessing a foreign path or share.
+        if os.path.normcase(os.path.abspath(path)) in scripts:
+            return True
+    return False
 
 
 def is_process_alive(pid, keyword=''):
@@ -231,13 +240,15 @@ def stop_pid(pid, force_self=False, *, preserve_background=False):
 def find_project_processes(patterns, include_self=False):
     try:
         import psutil
+        keywords = [component_keyword(pattern).replace('\\', '/').lower() for pattern in patterns]
         result = []
         for proc in psutil.process_iter(['pid', 'cmdline']):
             try:
-                if (proc.pid != os.getpid() or include_self) and _owned_command(proc):
-                    cmd = ' '.join(proc.cmdline()).replace('\\', '/').lower()
-                    if any(p.replace('\\', '/').lower() in cmd for p in patterns):
-                        result.append(proc.pid)
+                if proc.pid == os.getpid() and not include_self:
+                    continue
+                cmd = ' '.join(proc.info['cmdline'] or []).replace('\\', '/').lower()
+                if any(keyword in cmd for keyword in keywords) and _owned_command(proc):
+                    result.append(proc.pid)
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 pass
         return result

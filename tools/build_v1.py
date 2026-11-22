@@ -237,6 +237,7 @@ def collect_licenses(destination: Path) -> list[dict]:
 
 
 def audit_bundle(bundle: Path) -> dict:
+    nagisa_runtime = {f"_internal/nagisa/data/nagisa_v001.{suffix}" for suffix in ("dict", "hp", "model")}
     bad = []
     inventory = []
     for path in sorted(bundle.rglob("*")):
@@ -247,9 +248,10 @@ def audit_bundle(bundle: Path) -> dict:
             continue
         rel = path.relative_to(bundle)
         parts = set(rel.parts)
-        if (parts & {".git", "logs", "uploads", "outputs", "config_backups", "config_exports", "models", "data"} or
-                path.suffix.lower() in {".onnx", ".gguf", ".mp3", ".wav", ".m4a", ".log"} or
-                (path.name in PRIVATE_NAMES and "release_defaults" not in parts)):
+        if (rel.as_posix() not in nagisa_runtime and
+                (parts & {".git", "logs", "uploads", "outputs", "config_backups", "config_exports", "models", "data"} or
+                 path.suffix.lower() in {".onnx", ".gguf", ".model", ".mp3", ".wav", ".m4a", ".log"} or
+                 (path.name in PRIVATE_NAMES and "release_defaults" not in parts))):
             bad.append(rel.as_posix())
         inventory.append({"path": rel.as_posix(), "size": path.stat().st_size, "sha256": sha256(path)})
     if bad:

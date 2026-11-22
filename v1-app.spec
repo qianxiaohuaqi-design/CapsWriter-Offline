@@ -12,6 +12,13 @@ binaries, datas, hiddenimports = [], [], []
 # Dynamic/native backends; any required package missing fails the build explicitly.
 for package in ("nicegui", "webview", "onnxruntime", "sherpa_onnx", "sounddevice", "sentencepiece", "soundfile", "gguf", "pypinyin", "pystray", "nagisa", "soynlp"):
     package_data, package_binaries, package_imports = collect_all(package)
+    if package == "nagisa":
+        package_data = [(src, dest) for src, dest in package_data
+                        if Path(src).stem == "nagisa_v001" and Path(src).suffix in (".dict", ".hp", ".model")]
+    if package == "onnxruntime":
+        # The application uses inference, not the transformer export tools.
+        package_data = [(src, dest) for src, dest in package_data if "transformers" not in Path(src).parts]
+        package_imports = [name for name in package_imports if not name.startswith("onnxruntime.transformers")]
     # Dependency test models are not runtime assets and must not enter a model-free package.
     datas += [(src, dest) for src, dest in package_data if Path(src).suffix.lower() not in (".onnx", ".gguf") and "tests" not in Path(src).parts]
     binaries += package_binaries
@@ -50,6 +57,10 @@ analysis = Analysis([str(ROOT / "run_app.py")], pathex=[str(ROOT)], binaries=bin
                     runtime_hooks=[str(ROOT / "packaging/runtime_hook.py")],
                     excludes=["IPython", "notebook", "matplotlib", "PyQt5", "PyQt6", "PySide2", "PySide6", "torch", "transformers"],
                     noarchive=False)
+# The scikit-learn hook collects demo and test datasets along with the estimators.
+analysis.datas = [entry for entry in analysis.datas
+                  if Path(entry[0]).parts[:3] not in (("sklearn", "datasets", "data"),
+                                                        ("sklearn", "datasets", "tests"))]
 pyz = PYZ(analysis.pure)
 exe = EXE(pyz, analysis.scripts, [], exclude_binaries=True, name="CapsWriter", debug=False,
           bootloader_ignore_signals=False, strip=False, upx=False, console=False,
