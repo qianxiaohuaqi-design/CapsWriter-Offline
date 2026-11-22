@@ -279,6 +279,12 @@ def artifact_record(path: Path, kind: str) -> dict:
             "verified_at": None}
 
 
+def require_clean_source(commit: str) -> None:
+    check = subprocess.run(["git", "diff", "--quiet", commit, "--"], cwd=ROOT)
+    if check.returncode:
+        raise ValueError("Tracked files changed from the build commit. Commit reviewed sources before packaging.")
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path)
@@ -288,8 +294,8 @@ def main(argv=None) -> int:
     parser.add_argument("--iscc", type=Path, help="Inno Setup 6 compiler path; required for full build")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args(argv)
-    metadata = json.loads((ROOT / "packaging/version.json").read_text(encoding="utf-8"))
     if args.dry_run:
+        metadata = json.loads((ROOT / "packaging/version.json").read_text(encoding="utf-8"))
         print(json.dumps({"version": metadata, "platform": platform.system(), "build_requires": "Windows x64, Python 3.11, requirements-v1.txt",
                           "full_build_requires": ["reviewed FFmpeg/GGUF manifest", "Inno Setup 6"], "publishes": False}, ensure_ascii=False, indent=2))
         return 0
@@ -297,18 +303,26 @@ def main(argv=None) -> int:
         parser.error("Windows build must run on Windows; use --stage-only here.")
     if not args.stage_only and not args.minimal and (not args.vendor_manifest or not args.iscc):
         parser.error("Full build needs --vendor-manifest and --iscc. --minimal is an honest smoke-only build.")
+    # Keep provenance tied to the staged sources even if Git advances while
+    # PyInstaller or Inno Setup is running.
+    commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, check=True, capture_output=True, text=True).stdout.strip()
+    if not args.stage_only:
+        require_clean_source(commit)
     job = (args.output or ROOT / "build" / ("v1-" + time.strftime("%Y%m%d-%H%M%S"))).absolute()
     if job.exists():
         parser.error("Output already exists; choose a new path. No files were deleted.")
     job.mkdir(parents=True)
     stage = job / "source"
     source_inventory = stage_sources(ROOT, stage)
+    if not args.stage_only:
+        require_clean_source(commit)
     (job / "source-inventory.json").write_text(json.dumps(source_inventory, ensure_ascii=False, indent=2), encoding="utf-8")
     if args.vendor_manifest:
         stage_vendors(args.vendor_manifest, stage, full=not args.minimal)
     if args.stage_only:
         print(f"Clean sources staged: {stage}")
         return 0
+    metadata = json.loads((stage / "packaging/version.json").read_text(encoding="utf-8"))
     collect_licenses(stage)
     subprocess.run([sys.executable, "-m", "PyInstaller", str(stage / "v1-app.spec"), "--distpath", str(job / "dist"), "--workpath", str(job / "pyinstaller")], cwd=stage, check=True)
     bundle = job / "dist" / "CapsWriter"
@@ -326,7 +340,6 @@ def main(argv=None) -> int:
         subprocess.run([str(args.iscc.resolve()), "/DAppVersion=" + version, "/DNumericVersion=" + numeric,
                         "/DBuildSource=" + str(bundle), "/DOutputDirectory=" + str(artifacts), str(stage / "packaging/capswriter.iss")], check=True)
         records.append(artifact_record(artifacts / (prefix + "Setup.exe"), "installer"))
-    commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, check=True, capture_output=True, text=True).stdout.strip()
     manifest = {"schema": "capswriter.release.v1", "version": version, "channel": metadata["channel"], "code_sha": commit,
                 "generated_at": datetime.now(timezone.utc).isoformat(), "status": "candidate", "windows_validated": False,
                 "minimal_build": args.minimal, "artifacts": records}

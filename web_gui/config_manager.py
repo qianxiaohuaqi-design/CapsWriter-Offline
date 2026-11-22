@@ -1011,9 +1011,7 @@ class ConfigManager:
             role_path = LLM_DIR / f'{safe_name}_{uuid.uuid4().hex[:4]}.py'
         trigger_name = name or role_path.stem
         prompt = system_prompt or '你是一个自定义 AI 助理。请根据用户输入完成任务，只输出最终结果，不要添加多余解释。'
-        content = f'''"""
-{trigger_name}
-"""
+        content = f'''"""CapsWriter AI role."""
 
 name = {trigger_name!r}
 enabled = True

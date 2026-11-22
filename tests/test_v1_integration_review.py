@@ -332,6 +332,21 @@ class ProcessDiscoveryTests(unittest.TestCase):
 
 
 class RuntimeRoleTests(unittest.TestCase):
+    def test_role_name_preserves_literal_quotes_and_newlines(self):
+        import ast
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            directory = root / 'LLM'
+            directory.mkdir()
+            name = '本地 """引号\n换行'
+            with patch.object(config_module, 'BASE_DIR', root), patch.object(config_module, 'LLM_DIR', directory):
+                stem = config_module.ConfigManager.create_llm_role(name=name)
+            statements = ast.parse((directory / f'{stem}.py').read_text(encoding='utf-8')).body
+            assignment = next(node for node in statements if isinstance(node, ast.Assign)
+                              and node.targets[0].id == 'name')
+            self.assertEqual(ast.literal_eval(assignment.value), name)
+
     def test_load_and_reload_use_the_writable_role_file(self):
         from core.client.llm.llm_role_loader import RoleLoader
 

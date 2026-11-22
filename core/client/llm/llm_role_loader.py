@@ -28,7 +28,7 @@ class RoleLoader:
         path = file_path.resolve()
         if path.parent != self.llm_dir.resolve() or path.suffix != '.py' or path.name == '__init__.py':
             raise ValueError('不是角色目录下的角色文件')
-        module_name = f'LLM.{path.stem}'
+        module_name = f'LLM.{file_path.stem}'
         spec = importlib.util.spec_from_file_location(module_name, path)
         module = importlib.util.module_from_spec(spec)
         # Load the editable profile directly and avoid stale same-second bytecode.

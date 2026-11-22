@@ -99,20 +99,26 @@ def main():
             from core.product import bridge
             import psutil
             try:
-                owner = psutil.Process(bridge.descriptor()['pid'])
-                parent = owner.parent()
+                owner = redirector = None
+                try:
+                    owner = psutil.Process(bridge.descriptor()['pid'])
+                    parent = owner.parent()
+                    if parent and parent.cmdline()[1:] == owner.cmdline()[1:]:
+                        redirector = parent
+                except (RuntimeError, psutil.Error):
+                    pass
                 # The Windows venv redirector inherits the startup log handle.
                 # Wait for it as well only when it launched this same command.
-                redirector = parent if parent and parent.cmdline()[1:] == owner.cmdline()[1:] else None
-                bridge.request('shutdown', timeout=3)
-                owner.wait(timeout=12)
-                if redirector:
-                    redirector.wait(timeout=4)
-            except (RuntimeError, psutil.NoSuchProcess):
-                pass
-            # On Windows the app's file handlers keep the temporary profile
-            # locked until closed, even after the simulated page disconnects.
-            logging.shutdown()
+                try:
+                    bridge.request('shutdown', timeout=3)
+                except RuntimeError:
+                    pass
+                for process in (owner, redirector):
+                    if process:
+                        process.wait(timeout=12)
+            finally:
+                # Close file handlers before deleting the temporary profile.
+                logging.shutdown()
         if args.output:
             args.output.parent.mkdir(parents=True, exist_ok=True)
             args.output.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding='utf-8')
