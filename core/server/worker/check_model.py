@@ -9,12 +9,15 @@ import sys
 from pathlib import Path
 
 from config_server import ServerConfig as Config
-from config_server import ModelPaths, ModelDownloadLinks
+from config_server import ModelPaths, ModelDownloadLinks, SenseVoiceArgs, ParaformerArgs, FunASRNanoGGUFArgs, Qwen3ASRGGUFArgs
 from core.server.state import console
 from . import logger
 
 
 def _pause_before_exit(prompt: str = '按回车退出') -> None:
+    import os
+    if os.environ.get('CAPSWRITER_CONTROL_CENTER') == '1' or not sys.stdin or not sys.stdin.isatty():
+        return
     try:
         input(prompt)
     except (RuntimeError, EOFError, OSError):
@@ -31,36 +34,38 @@ def check_model() -> None:
         SystemExit: 当模型类型不支持或模型文件缺失时退出
     """
     model_type = Config.model_type.lower()
+    if getattr(Config, '_product_model_error', ''):
+        raise RuntimeError(Config._product_model_error)
     logger.debug(f"检查模型文件, 类型: {model_type}")
 
     # 根据模型类型确定需要检查的文件
     if model_type == 'fun_asr_nano':
         model_dir = ModelPaths.fun_asr_nano_gguf_dir
         required_files = [
-            ModelPaths.fun_asr_nano_gguf_encoder_adaptor,
-            ModelPaths.fun_asr_nano_gguf_ctc,
-            ModelPaths.fun_asr_nano_gguf_llm_decode,
-            ModelPaths.fun_asr_nano_gguf_token,
+            Path(FunASRNanoGGUFArgs.encoder_onnx_path),
+            Path(FunASRNanoGGUFArgs.ctc_onnx_path),
+            Path(FunASRNanoGGUFArgs.decoder_gguf_path),
+            Path(FunASRNanoGGUFArgs.tokens_path),
         ]
     elif model_type == 'sensevoice':
         model_dir = ModelPaths.sensevoice_dir
         required_files = [
-            ModelPaths.sensevoice_encoder,
-            ModelPaths.sensevoice_decoder,
-            ModelPaths.sensevoice_tokenizer,
+            Path(SenseVoiceArgs.encoder_path),
+            Path(SenseVoiceArgs.decoder_path),
+            Path(SenseVoiceArgs.tokenizer_path),
         ]
     elif model_type == 'paraformer':
         model_dir = ModelPaths.paraformer_dir
         required_files = [
-            ModelPaths.paraformer_model,
-            ModelPaths.paraformer_tokens,
+            Path(ParaformerArgs.paraformer),
+            Path(ParaformerArgs.tokens),
         ]
     elif model_type == 'qwen_asr':
         model_dir = ModelPaths.qwen3_asr_gguf_dir
         required_files = [
-            ModelPaths.qwen3_asr_gguf_encoder_frontend,
-            ModelPaths.qwen3_asr_gguf_encoder_backend,
-            ModelPaths.qwen3_asr_gguf_llm_decode,
+            Path(Qwen3ASRGGUFArgs.model_dir) / Qwen3ASRGGUFArgs.encoder_frontend_fn,
+            Path(Qwen3ASRGGUFArgs.model_dir) / Qwen3ASRGGUFArgs.encoder_backend_fn,
+            Path(Qwen3ASRGGUFArgs.model_dir) / Qwen3ASRGGUFArgs.llm_fn,
         ]
     else:
         error_msg = f"不支持的模型类型: {Config.model_type}"

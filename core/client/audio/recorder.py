@@ -65,8 +65,35 @@ class AudioRecorder:
         """快捷访问桥接到 app.ws"""
         return self.app.ws
 
+    def _forget_pending_result(self, task_id: str) -> None:
+        # A final result can already be in the AI pipeline while another send
+        # reports a closed connection. Its owner clears it when processing ends.
+        if task_id not in getattr(self.state, 'processing_input_tasks', set()):
+            getattr(self.state, 'input_targets', {}).pop(task_id, None)
+
     async def _send_message(self, message: AudioMessage) -> None:
+        try:
+            await self._send_message_impl(message)
+        except asyncio.CancelledError:
+            if message.is_final:
+                self._forget_pending_result(message.task_id)
+            raise
+        except Exception:
+            if message.is_final:
+                self._forget_pending_result(message.task_id)
+                self.state.pop_audio_file(message.task_id)
+            logger.exception('发送录音消息失败，本地录音文件保持原状')
+
+    async def _send_message_impl(self, message: AudioMessage) -> None:
         """发送消息到服务端"""
+        if message.is_final:
+            targets = getattr(self.state, 'input_targets', None)
+            if targets is None:
+                targets = self.state.input_targets = {}
+            # A prior disconnect may have invalidated the original focus target.
+            # Keep an unresolved marker until this send fails or its result ends;
+            # do not capture a replacement window after recording has started.
+            targets.setdefault(message.task_id, None)
         if not self._ws_manager.is_connected:
             # 刚启动阶段快速尝试等待连接（最多等待 2.0s）
             for _ in range(10):
@@ -80,6 +107,7 @@ class AudioRecorder:
         if not self._ws_manager.is_connected:
             if message.is_final:
                 self.state.pop_audio_file(message.task_id)
+                self._forget_pending_result(message.task_id)
                 console.print('    服务端尚未就绪或连接中，无法发送\n')
                 logger.warning("服务端尚未就绪或未连接，无法发送音频数据")
                 try:
@@ -93,6 +121,7 @@ class AudioRecorder:
         success = await self._ws_manager.send(message)
         if not success and message.is_final:
             self.state.pop_audio_file(message.task_id)
+            self._forget_pending_result(message.task_id)
             # 具体错误日志由 WebSocketManager 记录
     
     async def record_and_send(self) -> None:
@@ -102,9 +131,22 @@ class AudioRecorder:
         从队列中读取音频数据，保存到文件（如果启用），
         并发送到服务端进行识别。
         """
+        session_task_id = None
+        final_scheduled = False
         try:
             # 生成唯一任务 ID
             self.task_id = str(uuid.uuid1())
+            session_task_id = self.task_id
+            targets = getattr(self.state, 'input_targets', None)
+            if targets is None:
+                targets = self.state.input_targets = {}
+            target = getattr(self.state, 'pending_input_target', None)
+            if target is not None:
+                from core.ui.modern_overlay.pill_overlay import _pill_instance
+                target['overlay_turn'] = getattr(_pill_instance, '_turn_id', None)
+            targets[self.task_id] = target
+            while len(targets) > 100:
+                targets.pop(next(iter(targets)))
             logger.debug(f"创建录音任务，任务ID: {self.task_id}")
             
             self._start_time = 0.0
@@ -214,11 +256,14 @@ class AudioRecorder:
                         language=Config.language,
                     )
                     asyncio.create_task(self._send_message(message))
+                    final_scheduled = True
                     break
                     
         except Exception as e:
             logger.error(f"录音任务错误: {e}", exc_info=True)
         finally:
+            if session_task_id is not None and not final_scheduled:
+                self._forget_pending_result(session_task_id)
             self.state.stop_recording()
     
     def get_file_manager(self) -> Optional[AudioFileManager]:

@@ -36,6 +36,18 @@ class MicRunner:
         # 3. 开启运行组件 (音频流、快捷键监听)
         self.app.stream.start()
         self.app.shortcut.start()
+        from core.product.status import StatusPublisher
+        def collect():
+            stream = self.state.stream
+            listeners = [getattr(self.app.shortcut, name, None)
+                         for name in ('keyboard_listener', 'mouse_listener')]
+            # Registered listeners are observed; a launched PID alone is insufficient.
+            hotkeys = any(listener and listener.is_alive() for listener in listeners)
+            return {'state': 'running', 'connected': self.ws_manager.is_connected,
+                    'microphone_ready': bool(stream and stream.active),
+                    'hotkeys_ready': hotkeys, 'recording': bool(self.state.recording),
+                    'pending_results': bool(getattr(self.state, 'input_targets', {}))}
+        self.app._status_publisher = StatusPublisher('client', collect).start()
         
         # 4. 开启 UDP 控制 (如果启用)
         if Config.udp_control:

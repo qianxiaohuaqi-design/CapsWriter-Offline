@@ -4,7 +4,8 @@ import os
 __version__ = '2.6'
 
 # 项目根目录
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+from core.product.paths import data_root, apply_config_overrides
+BASE_DIR = str(data_root())
 
 
 # 客户端配置
@@ -157,3 +158,5 @@ r"""
   {'key': 'f12', 'type': 'keyboard', 'suppress': True, 'hold_mode': True, 'enabled': True}, 
   {'key': 'x2', 'type': 'mouse', 'suppress': True, 'hold_mode': True, 'enabled': True}, 
 """
+
+apply_config_overrides(__name__, globals())

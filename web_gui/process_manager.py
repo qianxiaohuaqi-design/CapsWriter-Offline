@@ -1,473 +1,356 @@
 # coding: utf-8
-"""控制中心后台进程状态与重启工具。"""
+"""Owned process control and independently verified Worker/client health.
 
+A listening port is diagnostic information, never proof of ownership/readiness.
+"""
 from __future__ import annotations
-
 import os
 import socket
 import subprocess
 import sys
 from pathlib import Path
+from core.product.paths import resource_root, data_root, bootstrap
+from core.product.storage import atomic_json, read_json
+from core.product.status import health_snapshot, process_birth, same_process
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-LOG_DIR = BASE_DIR / 'logs'
+BASE_DIR = resource_root()
+LOG_DIR = data_root() / 'logs'
 SERVER_PID_FILE = LOG_DIR / 'control_center_server.pid'
 CLIENT_PID_FILE = LOG_DIR / 'control_center_client.pid'
 GUI_PID_FILE = LOG_DIR / 'control_center_gui.pid'
 CREATE_NO_WINDOW = 0x08000000 if sys.platform == 'win32' else 0
 
 
-def python_executable(*, prefer_console: bool = True) -> str:
-    """Return a Python runtime suitable for hidden child processes on Windows."""
-    executable = Path(sys.executable)
-    if sys.platform == 'win32' and prefer_console and executable.name.lower() == 'pythonw.exe':
-        console_exe = executable.with_name('python.exe')
-        if console_exe.exists():
-            return str(console_exe)
-    if sys.platform == 'win32' and not prefer_console and executable.name.lower() == 'python.exe':
-        windowless_exe = executable.with_name('pythonw.exe')
-        if windowless_exe.exists():
-            return str(windowless_exe)
-    return str(executable)
+def python_executable(*, prefer_console=True):
+    exe = Path(sys.executable)
+    if sys.platform == 'win32' and not is_frozen_app():
+        alternative = exe.with_name('python.exe' if prefer_console else 'pythonw.exe')
+        if alternative.exists():
+            return str(alternative)
+    return str(exe)
 
 
-def is_frozen_app() -> bool:
+def is_frozen_app():
     return bool(getattr(sys, 'frozen', False))
 
 
-def component_keyword(script_name: str) -> str:
+def component_keyword(script_name):
+    return ({'run_app.py': 'capswriter', 'start_server.py': '--server',
+             'start_client.py': '--client', 'web_gui/app.py': '--gui',
+             'web_gui\\app.py': '--gui', 'app.py': '--gui'}.get(script_name, script_name)
+            if is_frozen_app() else script_name)
+
+
+def is_port_open(host, port, timeout=0.2):
+    try:
+        with socket.create_connection((host, int(port)), timeout=timeout):
+            return True
+    except OSError:
+        return False
+
+
+def _owned_command(proc):
+    """Require this exact application installation, not a generic Python name."""
+    args = proc.cmdline()
     if is_frozen_app():
-        mapping = {
-            'run_app.py': 'capswriter',
-            'start_server.py': '--server',
-            'start_client.py': '--client',
-            'web_gui/app.py': '--gui',
-            'web_gui\\app.py': '--gui',
-            'app.py': '--gui',
-        }
-        return mapping.get(script_name, script_name)
-    return script_name
+        return Path(proc.exe()).resolve() == Path(sys.executable).resolve()
+    scripts = {str((BASE_DIR / name).resolve()) for name in
+               ('run_app.py', 'start_client.py', 'start_server.py', 'web_gui/app.py')}
+    return any(str((Path(arg) if Path(arg).is_absolute() else Path(proc.cwd()) / arg).resolve()) in scripts
+               for arg in args[1:] if not arg.startswith('-'))
 
 
-def is_port_open(host: str, port: int, timeout: float = 0.2) -> bool:
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-        sock.settimeout(timeout)
-        return sock.connect_ex((host, port)) == 0
-
-
-def is_process_alive(pid: int, keyword: str = '') -> bool:
-    if pid <= 0:
-        return False
+def is_process_alive(pid, keyword=''):
     try:
         import psutil
-        if not psutil.pid_exists(pid):
-            return False
-        p = psutil.Process(pid)
-        if not p.is_running() or p.status() == psutil.STATUS_ZOMBIE:
-            return False
-        cmd = ' '.join(p.cmdline()).lower()
-        proc_name = p.name().lower()
-        if 'python' in proc_name or 'python' in cmd or 'capswriter' in proc_name or 'capswriter' in cmd:
-            if not keyword or keyword.lower() in cmd:
-                return True
-            return False
-        return False
+        proc = psutil.Process(int(pid))
+        return (proc.is_running() and proc.status() != psutil.STATUS_ZOMBIE
+                and _owned_command(proc) and (not keyword or keyword.lower() in ' '.join(proc.cmdline()).lower()))
     except Exception:
-        if keyword:
-            return False
-        if sys.platform == 'win32':
-            try:
-                import ctypes
-                handle = ctypes.windll.kernel32.OpenProcess(0x1000, False, pid)
-                if not handle:
-                    return False
-                exit_code = ctypes.c_ulong()
-                ctypes.windll.kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code))
-                ctypes.windll.kernel32.CloseHandle(handle)
-                return exit_code.value == 259
-            except Exception:
-                return False
         return False
 
 
-def read_alive_pid(pid_file: Path, keyword: str = '') -> int | None:
-    try:
-        pid = int(pid_file.read_text(encoding='utf-8').strip())
-    except Exception:
-        return None
-    return pid if is_process_alive(pid, keyword) else None
+def _identity_file(pid_file):
+    return Path(str(pid_file) + '.identity.json')
 
 
-def read_alive_control_pid(pid_file: Path) -> int | None:
+def read_alive_pid(pid_file, keyword=''):
     try:
-        pid = int(pid_file.read_text(encoding='utf-8').strip())
-    except Exception:
+        pid = int(Path(pid_file).read_text(encoding='utf-8').strip())
+        identity = read_json(_identity_file(pid_file))
+        if identity is not None and (identity.get('pid') != pid or not same_process(pid, identity.get('birth'))):
+            return None
+        return pid if is_process_alive(pid, keyword) else None
+    except (OSError, ValueError, TypeError, AttributeError):
         return None
-    if not is_frozen_app():
-        return pid if is_process_alive(pid, component_keyword('run_app.py')) else None
+
+
+def read_alive_control_pid(pid_file):
+    pid = read_alive_pid(pid_file)
+    if not pid:
+        return None
     try:
         import psutil
-        if not psutil.pid_exists(pid):
-            return None
-        proc = psutil.Process(pid)
-        if not proc.is_running() or proc.status() == psutil.STATUS_ZOMBIE:
-            return None
-        cmd_parts = [part.lower() for part in proc.cmdline()]
-        cmd = ' '.join(cmd_parts)
-        if 'capswriter' not in proc.name().lower() and 'capswriter' not in cmd:
-            return None
-        child_modes = ('--server', '--client', '--gui')
-        return None if any(mode in cmd_parts for mode in child_modes) else pid
+        args = psutil.Process(pid).cmdline()
+        return None if any(mode in args for mode in ('--server', '--client', '--gui', '--coordinator')) else pid
     except Exception:
         return None
 
 
-def write_pid(pid_file: Path, pid: int) -> None:
-    LOG_DIR.mkdir(exist_ok=True)
-    pid_file.write_text(str(pid), encoding='utf-8')
+def write_pid(pid_file, pid):
+    Path(pid_file).parent.mkdir(parents=True, exist_ok=True)
+    atomic_json(_identity_file(pid_file), {'pid': pid, 'birth': process_birth(pid), 'root': str(BASE_DIR)})
+    Path(pid_file).write_text(str(pid), encoding='utf-8')
 
 
-def find_listening_pid(port: int) -> int | None:
-    if sys.platform != 'win32':
-        return None
-    if not is_port_open('127.0.0.1', port, timeout=0.15):
-        return None
+def find_listening_pid(port):
     try:
         import psutil
         for conn in psutil.net_connections(kind='inet'):
-            if conn.status == psutil.CONN_LISTEN and conn.laddr.port == port:
+            if conn.status == psutil.CONN_LISTEN and conn.laddr.port == int(port):
                 return conn.pid
     except Exception:
         pass
-    # psutil 不可用时退回 PowerShell 查询
+    return None
+
+
+def _background_tree_root():
+    """Return only this installation's live, descriptor-bound coordinator."""
     try:
-        result = subprocess.run(
-            [
-                'powershell',
-                '-NoProfile',
-                '-Command',
-                f"(Get-NetTCPConnection -LocalPort {port} -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty OwningProcess)",
-            ],
-            capture_output=True,
-            text=True,
-            encoding='utf-8',
-            errors='ignore',
-            creationflags=CREATE_NO_WINDOW,
-            timeout=5,
-        )
-        raw = result.stdout.strip()
-        return int(raw) if raw else None
+        import psutil
+        info = read_json(data_root() / 'runtime' / 'coordinator.json', {})
+        if not isinstance(info, dict) or not same_process(info.get('pid'), info.get('birth')):
+            return None
+        process = psutil.Process(info['pid'])
+        if not _owned_command(process) or '--coordinator' not in process.cmdline():
+            return None
+        return info['pid'], info['birth']
     except Exception:
         return None
 
 
-def close_windows_by_pid(pid: int, include_children: bool = False) -> None:
-    """向指定进程的窗口发送 WM_CLOSE，可包含 Native GUI 子进程。"""
-    if sys.platform != 'win32' or not pid:
+def _background_tree_roots():
+    """ASR/client can also be direct GUI children after a diagnostics restart."""
+    owners = []
+    coordinator = _background_tree_root()
+    if coordinator is not None:
+        owners.append(coordinator)
+    for pid_file, script in ((SERVER_PID_FILE, 'start_server.py'), (CLIENT_PID_FILE, 'start_client.py')):
+        try:
+            identity = read_json(_identity_file(pid_file), {})
+            if not isinstance(identity, dict):
+                continue
+            pid = read_alive_pid(pid_file, component_keyword(script))
+            if (pid and identity.get('pid') == pid
+                    and same_process(pid, identity.get('birth'))):
+                owners.append((pid, identity['birth']))
+        except Exception:
+            pass
+    return owners
+
+
+def _in_background_tree(process, owners):
+    if not owners:
+        return False
+    try:
+        for ancestor in [process, *process.parents()]:
+            for owner_pid, owner_birth in owners:
+                if ancestor.pid == owner_pid and abs(ancestor.create_time() - owner_birth) < 0.01:
+                    return True
+    except Exception:
+        # During GUI-only close, uncertainty must not kill a background task.
+        return True
+    return False
+
+
+def _child_identities(process, preserved_owners):
+    result = []
+    for child in process.children(recursive=True):
+        if not _in_background_tree(child, preserved_owners):
+            try:
+                result.append((child, child.create_time()))
+            except Exception:
+                continue
+    return result
+
+
+def close_windows_by_pid(pid, include_children=False, *, preserve_background=False):
+    if sys.platform != 'win32' or not is_process_alive(pid):
         return
     try:
         import ctypes
         from ctypes import wintypes
-
-        user32 = ctypes.windll.user32
-        WM_CLOSE = 0x0010
-        target_pids = {pid}
+        import psutil
+        process = psutil.Process(pid)
+        owners = _background_tree_roots() if preserve_background else []
+        if _in_background_tree(process, owners):
+            return
+        identities = {pid: process.create_time()}
         if include_children:
-            try:
-                import psutil
-                target_pids.update(child.pid for child in psutil.Process(pid).children(recursive=True))
-            except Exception:
-                pass
-
-        def enum_windows_callback(hwnd, extra):
-            proc_id = wintypes.DWORD()
-            user32.GetWindowThreadProcessId(hwnd, ctypes.byref(proc_id))
-            if proc_id.value in target_pids:
-                user32.PostMessageW(hwnd, WM_CLOSE, 0, 0)
+            identities.update({child.pid: birth for child, birth in _child_identities(process, owners)})
+        def callback(hwnd, _):
+            value = wintypes.DWORD()
+            ctypes.windll.user32.GetWindowThreadProcessId(hwnd, ctypes.byref(value))
+            if value.value in identities and same_process(value.value, identities[value.value]):
+                ctypes.windll.user32.PostMessageW(hwnd, 0x0010, 0, 0)
             return True
-
-        WNDENUMPROC = ctypes.WINFUNCTYPE(ctypes.c_bool, wintypes.HWND, wintypes.LPARAM)
-        user32.EnumWindows(WNDENUMPROC(enum_windows_callback), 0)
+        cb = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)(callback)
+        ctypes.windll.user32.EnumWindows(cb, 0)
     except Exception:
         pass
 
 
-def stop_pid(pid: int, force_self: bool = False) -> bool:
-    if not pid or not is_process_alive(pid):
+def stop_pid(pid, force_self=False, *, preserve_background=False):
+    if not pid or (pid == os.getpid() and not force_self) or not is_process_alive(pid):
         return False
-    if pid == os.getpid() and not force_self:
-        return False
-
-    close_windows_by_pid(pid)
-
     try:
         import psutil
-        proc = psutil.Process(pid)
-        for child in proc.children(recursive=True):
-            try:
-                close_windows_by_pid(child.pid)
-                child.kill()
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
-                pass
-        try:
-            proc.kill()
-        except psutil.NoSuchProcess:
-            return True
-        proc.wait(timeout=2)
-        return True
-    except psutil.NoSuchProcess:
-        return True
-    except Exception:
-        pass
-    # psutil 不可用或失败时退回 PowerShell
-    try:
-        command = f"""
-function Stop-Tree([int]$Id) {{
-    Get-CimInstance Win32_Process -Filter "ParentProcessId=$Id" -ErrorAction SilentlyContinue |
-        ForEach-Object {{ Stop-Tree ([int]$_.ProcessId) }}
-    Stop-Process -Id $Id -Force -ErrorAction SilentlyContinue
-}}
-Stop-Tree {pid}
-"""
-        subprocess.run(
-            ['powershell', '-NoProfile', '-Command', command],
-            capture_output=True,
-            text=True,
-            creationflags=CREATE_NO_WINDOW,
-            timeout=8,
-        )
+        process = psutil.Process(pid)
+        birth = process.create_time()
+        owners = _background_tree_roots() if preserve_background else []
+        if _in_background_tree(process, owners):
+            return False
+        children = _child_identities(process, owners)
+        close_windows_by_pid(pid, include_children=True, preserve_background=preserve_background)
+        for child, created in reversed(children):
+            if same_process(child.pid, created):
+                child.terminate()
+        if same_process(pid, birth):
+            process.terminate()
+        _, alive = psutil.wait_procs([p for p, _ in children] + [process], timeout=2)
+        identities = {child.pid: created for child, created in children}
+        identities[pid] = birth
+        for proc in alive:
+            if same_process(proc.pid, identities.get(proc.pid)):
+                proc.kill()
         return True
     except Exception:
         return False
 
 
-def find_project_processes(patterns: tuple[str, ...], include_self: bool = False) -> list[int]:
-    if sys.platform != 'win32':
-        return []
+def find_project_processes(patterns, include_self=False):
     try:
         import psutil
-        base = str(BASE_DIR).lower()
-        normalized = [pattern.lower() for pattern in patterns]
-        pids = []
+        result = []
         for proc in psutil.process_iter(['pid', 'cmdline']):
             try:
-                if proc.info['pid'] == os.getpid() and not include_self:
-                    continue
-                cmd = ' '.join(proc.info.get('cmdline') or []).lower()
-                if base in cmd and any(pattern in cmd for pattern in normalized):
-                    pids.append(proc.info['pid'])
+                if (proc.pid != os.getpid() or include_self) and _owned_command(proc):
+                    cmd = ' '.join(proc.cmdline()).replace('\\', '/').lower()
+                    if any(p.replace('\\', '/').lower() in cmd for p in patterns):
+                        result.append(proc.pid)
             except (psutil.NoSuchProcess, psutil.AccessDenied):
-                continue
-        return pids
-    except Exception:
-        pass
-    # psutil 不可用时退回 PowerShell 查询
-    try:
-        escaped_base = str(BASE_DIR).replace('\\', '\\\\')
-        escaped_patterns = [pattern.replace('\\', '\\\\') for pattern in patterns]
-        pattern_expr = ' -or '.join(f'$_.CommandLine -match "{pattern}"' for pattern in escaped_patterns)
-        self_expr = "" if include_self else f"$_.ProcessId -ne {os.getpid()} -and"
-        command = f"""
-Get-CimInstance Win32_Process |
-    Where-Object {{
-        {self_expr}
-        $_.CommandLine -match "{escaped_base}" -and
-        ({pattern_expr})
-    }} |
-    Select-Object -ExpandProperty ProcessId
-"""
-        result = subprocess.run(
-            ['powershell', '-NoProfile', '-Command', command],
-            capture_output=True,
-            text=True,
-            creationflags=CREATE_NO_WINDOW,
-            timeout=5,
-        )
-        return [int(line) for line in result.stdout.splitlines() if line.strip().isdigit()]
+                pass
+        return result
     except Exception:
         return []
 
 
-def _launch(script_name: str, pid_file: Path) -> int | None:
-    env = os.environ.copy()
-    env['CAPSWRITER_CONTROL_CENTER'] = '1'
+def _launch(script_name, pid_file, model_id=None):
+    bootstrap()
+    env = dict(os.environ, CAPSWRITER_CONTROL_CENTER='1')
+    if model_id:
+        env['CAPSWRITER_MODEL_ID'] = model_id
+    else:
+        env.pop('CAPSWRITER_MODEL_ID', None)
     if is_frozen_app():
-        mode = {
-            'start_server.py': '--server',
-            'start_client.py': '--client',
-        }.get(script_name)
+        mode = {'start_server.py': '--server', 'start_client.py': '--client'}.get(script_name)
         if not mode:
             return None
-        command = [str(Path(sys.executable)), mode]
+        command = [sys.executable, mode]
     else:
         script = BASE_DIR / script_name
-        if not script.exists():
+        if not script.is_file():
             return None
         command = [python_executable(prefer_console=False), str(script)]
-
-    process = subprocess.Popen(
-        command,
-        cwd=str(BASE_DIR),
-        creationflags=CREATE_NO_WINDOW,
-        env=env,
-    )
+    process = subprocess.Popen(command, cwd=str(data_root()), env=env, creationflags=CREATE_NO_WINDOW)
     write_pid(pid_file, process.pid)
     return process.pid
 
 
-def launch_server() -> tuple[bool, str]:
+def launch_server(model_id=None):
+    owned = read_alive_pid(SERVER_PID_FILE, component_keyword('start_server.py'))
+    if owned:
+        return True, f'ASR 进程已启动，模型状态请查看实时状态。PID: {owned}'
     if is_port_open('127.0.0.1', 6016):
-        pid = find_listening_pid(6016)
-        return True, f'ASR 服务端已在运行。PID: {pid or "未知"}'
-    pid = _launch('start_server.py', SERVER_PID_FILE)
-    return (True, f'已拉起 ASR 服务端。PID: {pid}') if pid else (False, '未找到 start_server.py')
+        return False, '6016 端口被其他或未确认归属的程序占用；不会接管或终止它。'
+    pid = _launch('start_server.py', SERVER_PID_FILE, model_id)
+    return bool(pid), f'正在加载 ASR 模型。PID: {pid}' if pid else '未找到服务端入口。'
 
 
-def launch_client() -> tuple[bool, str]:
+def launch_client():
     pid = read_alive_pid(CLIENT_PID_FILE, component_keyword('start_client.py'))
     if pid:
-        return True, f'听写客户端已在运行。PID: {pid}'
+        return True, f'听写客户端已启动。PID: {pid}'
+    if not health_snapshot()['model_loaded']:
+        return False, '模型尚未就绪，请先在模型中心加载；控制中心仍可使用。'
     pid = _launch('start_client.py', CLIENT_PID_FILE)
-    return (True, f'已拉起听写客户端。PID: {pid}') if pid else (False, '未找到 start_client.py')
+    return bool(pid), f'正在启动听写客户端。PID: {pid}' if pid else '未找到客户端入口。'
 
 
-def launch_missing_components() -> tuple[bool, str]:
-    """Start ASR server and dictation client only when they are not already alive."""
-    results = []
-    ok = True
-    server_alive = is_port_open('127.0.0.1', 6016)
-    client_alive = bool(read_alive_pid(CLIENT_PID_FILE, component_keyword('start_client.py')))
-
-    if server_alive:
-        pid = find_listening_pid(6016)
-        results.append(f'ASR 服务端已在线（PID: {pid or "未知"}）')
-    else:
-        server_ok, server_msg = launch_server()
-        ok = ok and server_ok
-        results.append(server_msg)
-
-    if client_alive:
-        pid = read_alive_pid(CLIENT_PID_FILE, component_keyword('start_client.py'))
-        results.append(f'听写客户端已在线（PID: {pid}）')
-    else:
-        client_ok, client_msg = launch_client()
-        ok = ok and client_ok
-        results.append(client_msg)
-
-    return ok, '；'.join(results)
+def launch_missing_components():
+    ok, message = launch_server()
+    if ok and health_snapshot()['model_loaded']:
+        ok2, message2 = launch_client()
+        return ok and ok2, message + '；' + message2
+    return ok, message
 
 
-def restart_server() -> tuple[bool, str]:
-    pid = find_listening_pid(6016) or read_alive_pid(SERVER_PID_FILE, component_keyword('start_server.py'))
-    if pid:
-        stop_pid(pid)
+def _busy():
+    from core.product.status import read_status
+    client = read_status('client')
+    if client.get('recording') or client.get('pending_results'):
+        return True
+    try:
+        from core.product.bridge import request
+        return bool(request('snapshot').get('tasks_busy'))
+    except Exception:
+        return read_status('inference').get('state') == 'busy'
+
+
+def restart_server():
+    if _busy():
+        return False, '正在录音、处理听写结果或转写，请等待任务完成/安全停止后重启。'
+    pid = read_alive_pid(SERVER_PID_FILE, component_keyword('start_server.py'))
+    if pid and not stop_pid(pid):
+        return False, '无法安全停止所属服务端。'
     return launch_server()
 
 
-def restart_client() -> tuple[bool, str]:
+def restart_client():
+    from core.product.status import read_status
+    client = read_status('client')
+    if client.get('recording') or client.get('pending_results'):
+        return False, '正在录音或处理听写结果，请先完成本次听写。'
     pid = read_alive_pid(CLIENT_PID_FILE, component_keyword('start_client.py'))
-    if pid:
-        stop_pid(pid)
+    if pid and not stop_pid(pid):
+        return False, '无法安全停止所属客户端。'
     return launch_client()
 
 
-def stop_gui(include_self: bool = False) -> bool:
-    """Stop the native GUI process, even if it was not launched by this tray instance."""
-    stopped = False
-    candidates = [
-        read_alive_pid(GUI_PID_FILE, component_keyword('app.py')),
-        find_listening_pid(6017),
-        *find_project_processes(('web_gui\\\\app.py', 'web_gui/app.py'), include_self=include_self),
-    ]
-    for pid in dict.fromkeys(pid for pid in candidates if pid):
-        stopped = stop_pid(pid, force_self=include_self) or stopped
-    return stopped
+def stop_gui(include_self=False):
+    pid = read_alive_pid(GUI_PID_FILE, component_keyword('app.py'))
+    return stop_pid(pid, force_self=include_self, preserve_background=True) if pid else False
 
 
-def stop_all(include_self: bool = False) -> dict[str, bool]:
-    """Stop GUI, dictation client, and ASR server as one product-level exit."""
-    # 1. 强制释放在 OS 中被卡住的修饰键
-    try:
-        from core.tools.key_reset import release_all_modifier_keys
-        release_all_modifier_keys()
-    except Exception:
-        pass
-
-    client_pids = [
-        read_alive_pid(CLIENT_PID_FILE, component_keyword('start_client.py')),
-        *find_project_processes(('start_client.py', '--client'), include_self=include_self),
-    ]
-    server_pids = [
-        find_listening_pid(6016),
-        read_alive_pid(SERVER_PID_FILE, component_keyword('start_server.py')),
-        *find_project_processes(('start_server.py', '--server'), include_self=include_self),
-    ]
-    gui_stopped = stop_gui(include_self=include_self)
-    client_stopped = False
-    for pid in dict.fromkeys(pid for pid in client_pids if pid):
-        client_stopped = stop_pid(pid, force_self=include_self) or client_stopped
-    server_stopped = False
-    for pid in dict.fromkeys(pid for pid in server_pids if pid):
-        server_stopped = stop_pid(pid, force_self=include_self) or server_stopped
-    launcher_stopped = False
-    for pid in find_project_processes(('run_app.py',), include_self=include_self):
-        if pid != os.getpid() or include_self:
-            launcher_stopped = stop_pid(pid, force_self=include_self) or launcher_stopped
-
-    # 清理 PID 缓存文件
-    for pf in (SERVER_PID_FILE, CLIENT_PID_FILE, GUI_PID_FILE, LOG_DIR / 'control_center.pid'):
+def stop_all(include_self=False, *, coordinator_checked=False):
+    if not coordinator_checked:
         try:
-            if pf.exists():
-                pf.unlink()
+            from core.product.bridge import request
+            result = request('shutdown', timeout=4)
+            if result.get('draining'):
+                return {'waiting': True, 'message': '正在安全停止转写，完成前保留控制中心。'}
         except Exception:
-            pass
-
-    return {
-        'gui': gui_stopped,
-        'client': client_stopped,
-        'server': server_stopped,
-        'launcher': launcher_stopped,
-    }
-
-
-def _tail_lines(path: Path, max_lines: int = 80, max_bytes: int = 65536) -> list[str]:
-    try:
-        with path.open('rb') as file:
-            file.seek(0, os.SEEK_END)
-            size = file.tell()
-            file.seek(max(0, size - max_bytes))
-            data = file.read()
-        return data.decode('utf-8', errors='ignore').splitlines()[-max_lines:]
-    except Exception:
-        return []
+            if _busy():
+                return {'waiting': True, 'message': '无法确认任务已安全停止，请保留窗口检查。'}
+    result = {}
+    for name, path in (('client', CLIENT_PID_FILE), ('server', SERVER_PID_FILE)):
+        pid = read_alive_pid(path)
+        result[name] = bool(pid and stop_pid(pid))
+    result['gui'] = stop_gui(include_self=include_self)
+    launcher = read_alive_control_pid(LOG_DIR / 'control_center.pid')
+    result['launcher'] = bool(launcher and launcher != os.getpid() and stop_pid(launcher))
+    return result
 
 
-def get_health_status() -> dict:
-    server_pid = find_listening_pid(6016) or read_alive_pid(SERVER_PID_FILE)
-    client_pid = read_alive_pid(CLIENT_PID_FILE)
-    server_alive = bool(server_pid and is_process_alive(server_pid) and is_port_open('127.0.0.1', 6016))
-    client_alive = bool(client_pid and is_process_alive(client_pid))
-    latest_error = ''
-    if LOG_DIR.exists():
-        logs = sorted(LOG_DIR.glob('*.log'), key=lambda p: p.stat().st_mtime, reverse=True)
-        for log in logs[:4]:
-            lines = _tail_lines(log)
-            for line in reversed(lines):
-                upper = line.upper()
-                if (
-                    ' ERROR ' in upper
-                    or ' CRITICAL ' in upper
-                    or 'TRACEBACK' in upper
-                ):
-                    latest_error = f'{log.name}: {line.strip()}'
-                    break
-            if latest_error:
-                break
-    return {
-        'server_alive': server_alive,
-        'server_pid': server_pid,
-        'client_alive': client_alive,
-        'client_pid': client_pid,
-        'model_loaded': server_alive,
-        'latest_error': latest_error or '暂无最近错误',
-    }
+def get_health_status():
+    return health_snapshot()

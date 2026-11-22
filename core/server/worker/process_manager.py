@@ -13,6 +13,8 @@ from ..state import console
 from . import start_worker
 from .check_model import check_model
 from . import logger
+from core.product.status import StatusPublisher, process_birth
+from config_server import ServerConfig as Config
 if TYPE_CHECKING:
     from ..app import CapsWriterServer
 
@@ -28,6 +30,18 @@ class ProcessManager:
         self._ready_event = None
         self.app = app
         self.is_alive = False
+        self._publisher = None
+        self._error = ''
+
+    def _snapshot(self):
+        alive = bool(self._process and self._process.is_alive())
+        ready = bool(alive and self._ready_event and self._ready_event.is_set() and self.is_alive)
+        return {'state': 'ready' if ready else ('error' if self._error else 'loading'),
+                'ready': ready, 'error': self._error,
+                'model_id': getattr(Config, '_product_model_id', Config.model_type),
+                'model_type': Config.model_type,
+                'worker_pid': self._process.pid if self._process else None,
+                'worker_birth': process_birth(self._process.pid) if self._process else None}
 
     def start(self):
         """
@@ -39,9 +53,16 @@ class ProcessManager:
         # 防连续触发
         if self.is_alive: return
         self.is_alive = True
+        self._publisher = StatusPublisher('server', self._snapshot).start()
 
         # 1. 前置检查
-        check_model()
+        try:
+            check_model()
+        except BaseException as error:
+            self._error = '模型文件缺失或配置无效，请在模型中心修复。'
+            self._publisher.publish()
+            self.is_alive = False
+            raise
 
         # 2. 初始化共享资源
         # 使用 Manager 管理共享列表，用于追踪活动连接
@@ -81,17 +102,19 @@ class ProcessManager:
         """等待模型加载事件，进程意外退出时同步停止服务"""
         logger.info("正在等待子进程加载模型...")
         
+        announced = False
         while self.is_alive:
-            if self._ready_event and self._ready_event.wait(timeout=0.1):
-                break
             if self._process and not self._process.is_alive():
+                self._error = '识别 Worker 已退出，请检查模型和运行依赖后重试。'
+                self._publisher.publish()
                 self._handle_unexpected_exit()
                 return
-            
-        if not self.is_alive: return
-        logger.info("模型加载完成，ASR 服务就绪")
-        console.rule('[green3]开始服务')
-        console.line()
+            if not announced and self._ready_event and self._ready_event.is_set():
+                logger.info('模型加载完成，ASR 服务就绪')
+                console.rule('[green3]开始服务')
+                announced = True
+            import time
+            time.sleep(0.2)
 
     def _handle_unexpected_exit(self):
         """处理子进程加载模型时的意外退出"""
@@ -109,6 +132,10 @@ class ProcessManager:
         # 防连续触发
         if not self.is_alive: return
         self.is_alive = False
+        if self._ready_event:
+            self._ready_event.clear()
+        if self._publisher:
+            self._publisher.stop()
 
         if self._process and self._process.is_alive():
             logger.info(f"正在终止识别子进程 (PID: {self._process.pid})...")

@@ -40,7 +40,7 @@ class FileTranscriber:
     4. 调用 ResultHandler 处理结果
     """
     
-    def __init__(self, app: CapsWriterClient, file: Path):
+    def __init__(self, app: CapsWriterClient, file: Path, options: dict | None = None):
         """
         初始化文件转录器
         
@@ -50,6 +50,7 @@ class FileTranscriber:
         """
         self.app = app
         self.file = file
+        self.options = options or {}
         self.task_id: Optional[str] = None
         self._audio_duration: float = 0.0
 
@@ -133,10 +134,10 @@ class FileTranscriber:
                     data=base64.b64encode(data).decode('utf-8'),
                     is_final=False,
                     time_start=time.time(),
-                    seg_duration=Config.file_seg_duration,
-                    seg_overlap=Config.file_seg_overlap,
-                    context=Config.context,
-                    language=Config.language,
+                    seg_duration=self.options.get('file_seg_duration', Config.file_seg_duration),
+                    seg_overlap=self.options.get('file_seg_overlap', Config.file_seg_overlap),
+                    context=self.options.get('context', Config.context),
+                    language=self.options.get('language', Config.language),
                 )
                 if not await self._ws_manager.send(message):
                     raise ConnectionError("消息发送失败，连接可能已断开")
@@ -148,14 +149,16 @@ class FileTranscriber:
                 data='',
                 is_final=True,
                 time_start=time.time(),
-                seg_duration=Config.file_seg_duration,
-                seg_overlap=Config.file_seg_overlap,
-                context=Config.context,
-                language=Config.language,
+                seg_duration=self.options.get('file_seg_duration', Config.file_seg_duration),
+                seg_overlap=self.options.get('file_seg_overlap', Config.file_seg_overlap),
+                context=self.options.get('context', Config.context),
+                language=self.options.get('language', Config.language),
             )
             if not await self._ws_manager.send(final_message):
                 raise ConnectionError("结束标志发送失败")
             await process.wait()
+            if process.returncode != 0:
+                raise RuntimeError("FFmpeg 无法解码该文件或音轨。")
             
             if self._audio_duration == 0:
                 self._audio_duration = progress 
@@ -180,16 +183,27 @@ class FileTranscriber:
             logger.error(f"发送数据失败: {e}, 文件: {self.file}")
             if process and process.returncode is None:
                 process.terminate()
+            self.task_id = None
             return
         except Exception as e:
             logger.error(f"转录发送异常: {e}", exc_info=True)
             if process and process.returncode is None:
                 process.terminate()
+            self.task_id = None
             return
+        finally:
+            if process and process.returncode is None:
+                process.terminate()
+                try:
+                    await asyncio.wait_for(process.wait(), timeout=2)
+                except asyncio.TimeoutError:
+                    process.kill()
+                    await process.wait()
     
     async def receive(self) -> None:
         """接收转录结果"""
         
+        message = None
         try:
             while True:
                 msg = await self._ws_manager.receive()
@@ -205,6 +219,10 @@ class FileTranscriber:
             return
         except Exception as e:
             logger.error(f"接收消息错误: {e}")
+            return
+
+        if message is None:
+            logger.error("未收到最终识别结果，不保存结果。")
             return
 
         # 应用热词并同步 tokens
@@ -228,7 +246,7 @@ class FileTranscriber:
         corrected = text_accu
 
         # 1. 音素热词替换
-        if Config.hot:
+        if self.options.get('hot', Config.hot):
             correction = self.app.hotword.get_phoneme_corrector().correct(text_accu, k=10)
             corrected = correction.text
             # 记录热词匹配日志
@@ -239,7 +257,7 @@ class FileTranscriber:
                 logger.debug(f"热词参考: 「{origin}」≈「{hw}」(分数={score:.2f})")
 
         # 2. 规则替换
-        if Config.hot_rule:
+        if self.options.get('hot_rule', Config.hot_rule):
             corrected = self.app.hotword.get_rule_corrector().substitute(corrected)
 
         # 3. 有变化则同步到 tokens 并更新 message

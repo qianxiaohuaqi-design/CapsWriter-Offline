@@ -47,7 +47,8 @@ class CapsWriterClient:
     def __init__(self):
         t_init_start = time.perf_counter()
         # 确保正确的工作目录
-        self.base_dir = Path(__file__).parents[2]
+        from core.product.paths import bootstrap
+        self.base_dir = bootstrap()
         os.chdir(self.base_dir)
             
         # 初始化事件循环
@@ -56,6 +57,7 @@ class CapsWriterClient:
             
         # 初始化状态容器
         self.state = ClientState(app=self)
+        self._status_publisher = None
 
         # 初始化热词管理器
         self.hotword = HotwordManager(
@@ -93,6 +95,8 @@ class CapsWriterClient:
         self.udp.stop()
         self.shortcut.stop()
         self.stream.stop()
+        if self._status_publisher:
+            self._status_publisher.stop()
 
         try:
             from core.ui.modern_overlay.pill_overlay import close_pill_overlay

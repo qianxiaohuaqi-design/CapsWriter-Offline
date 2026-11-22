@@ -1,0 +1,9 @@
+{
+  "schema": "capswriter.release.v1",
+  "version": "1.0.0-rc.1",
+  "channel": "preview",
+  "code_sha": null,
+  "status": "candidate",
+  "windows_validated": false,
+  "artifacts": []
+}

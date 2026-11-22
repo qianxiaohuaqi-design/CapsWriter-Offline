@@ -208,6 +208,9 @@ class ToastWindowText(ToastWindowBase):
         Args:
             new_text: 完整的新文本内容
         """
+        if self.user_edited:
+            return
+
         if not self.streaming:
             return
 

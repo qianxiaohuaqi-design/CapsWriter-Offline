@@ -17,7 +17,8 @@ import tkinter as tk
 from pathlib import Path
 
 # 配置判断
-BASE_DIR = Path(__file__).resolve().parent.parent.parent.parent
+from core.product.paths import data_root
+BASE_DIR = data_root()
 CONFIG_PILL_PATH = BASE_DIR / 'config_pill.py'
 CONFIG_CLIENT_PATH = BASE_DIR / 'config_client.py'
 TRANSPARENT_COLOR = '#ff00ff'
@@ -109,6 +110,11 @@ class FloatingPillWindow:
         self._final_hide_after_id = None
         self._preview_remaining_seconds = None
         self._preview_user_editing = False
+        self._preview_edited = False
+        self._preview_last_text = ''
+        self._turn_id = 0
+        self._recording_target = None
+        self._target_identity = None
         self._preview_config = None
         self._preview_keyboard_listener = None
         self._preview_pressed_keys = set()
@@ -170,9 +176,15 @@ class FloatingPillWindow:
         """显示底部实时字幕胶囊"""
         if not is_pill_enabled() or not self.root:
             return
+        self._turn_id += 1
+        self._recording_target = self._capture_target()
         self.root.after(0, lambda: self._do_show(text))
 
     def _do_show(self, text):
+        if self.state == 'preview' and self._preview_edited:
+            if self.preview_status:
+                self.preview_status.config(text='编辑内容已保留；新听写结果可从输入历史查看')
+            return
         self._cancel_pending_hide_timers()
         self._cancel_preview_autoclose()
         self.stop_anim = False
@@ -203,6 +215,8 @@ class FloatingPillWindow:
         self.root.after(0, lambda: self._do_processing(text))
 
     def _do_processing(self, text):
+        if self.state == 'preview' and self._preview_edited:
+            return
         if not self.is_visible:
             self._do_show(text)
         self.state = 'processing'
@@ -221,6 +235,8 @@ class FloatingPillWindow:
         self.root.after(0, lambda: self._do_update_text(text, final, force_caption))
 
     def _do_update_text(self, text, final, force_caption=False):
+        if self.state == 'preview' and self._preview_edited:
+            return
         self._cancel_pending_hide_timers()
         if not self.is_visible:
             self._do_show(text)
@@ -237,18 +253,27 @@ class FloatingPillWindow:
         if final:
             self._final_hide_after_id = self.root.after(1800, self.hide)
 
-    def show_preview(self, text, final=True, preview_config=None):
+    def show_preview(self, text, final=True, preview_config=None, request_id=None, target_identity=None):
         """Show final text in a persistent editable preview overlay."""
+        if request_id is not None and request_id != self._turn_id:
+            return True  # Late result belongs to an earlier recording.
+        if not is_pill_enabled() or not self.root or not text:
+            return False
         self._preview_config = preview_config or None
         if not final:
-            self.update_text(text, final=False, force_caption=True)
-            return
-        if not is_pill_enabled() or not self.root or not text:
-            return
-        target_hwnd = self._get_foreground_hwnd()
-        self.root.after(0, lambda: self._do_show_preview(text, target_hwnd))
+            token = self._turn_id if request_id is None else request_id
+            self.root.after(0, lambda: self._do_update_text(text, False, True) if token == self._turn_id else None)
+            return True
+        target = target_identity or self._recording_target or self._capture_target()
+        token = self._turn_id if request_id is None else request_id
+        self.root.after(0, lambda: self._do_show_preview(text, target) if token == self._turn_id else None)
+        return True
 
     def _do_show_preview(self, text, target_hwnd=None):
+        if self.state == 'preview' and self._preview_edited:
+            if self.preview_status:
+                self.preview_status.config(text='编辑内容已保留；新结果可从输入历史查看')
+            return
         self._cancel_pending_hide_timers()
         self._cancel_text_animation()
         self._cancel_preview_autoclose()
@@ -257,8 +282,11 @@ class FloatingPillWindow:
         self.state = 'preview'
         self.text = text
         self._force_caption = True
-        self._target_hwnd = target_hwnd
+        self._target_identity = target_hwnd if isinstance(target_hwnd, dict) else None
+        self._target_hwnd = target_hwnd.get('hwnd') if isinstance(target_hwnd, dict) else target_hwnd
         self._preview_user_editing = False
+        self._preview_edited = False
+        self._preview_last_text = text
         self._set_clipboard(text)
         self._apply_preview_geometry()
         self._build_preview(text)
@@ -436,6 +464,8 @@ class FloatingPillWindow:
             pady=10,
         )
         self.preview_text.insert('1.0', text)
+        self.preview_text.edit_modified(False)
+        self.preview_text.bind('<<Modified>>', self._on_preview_modified)
         self.preview_text.bind('<FocusIn>', self._pause_preview_autoclose)
         self.preview_text.bind('<KeyPress>', self._pause_preview_autoclose)
         self.preview_text.bind('<Button-1>', self._pause_preview_autoclose)
@@ -469,7 +499,7 @@ class FloatingPillWindow:
     def _preview_value(self):
         if not self.preview_text:
             return self.text
-        return self.preview_text.get('1.0', 'end-1c').strip()
+        return self.preview_text.get('1.0', 'end-1c')
 
     def _copy_preview(self):
         text = self._preview_value()
@@ -478,13 +508,27 @@ class FloatingPillWindow:
 
     def _sync_preview_clipboard(self, event=None):
         text = self._preview_value()
+        self.text = text
         if text:
-            self.text = text
             self._set_clipboard(text)
+
+    def _on_preview_modified(self, event=None):
+        if not self.preview_text or not self.preview_text.edit_modified():
+            return
+        self.preview_text.edit_modified(False)
+        value = self._preview_value()
+        if value != self._preview_last_text:
+            self._preview_edited = True
+            self._preview_last_text = value
+            self.text = value
+            self._preview_remaining_seconds = None
+            self._cancel_preview_autoclose()
+            if self.preview_status:
+                self.preview_status.config(text='已编辑，自动关闭已停止；请手动复制、写入或关闭')
 
     def _schedule_preview_autoclose(self, text):
         self._cancel_preview_autoclose()
-        if self._preview_setting('close_mode', 'preview_close_mode', 'auto') != 'auto':
+        if self._preview_edited or self._preview_setting('close_mode', 'preview_close_mode', 'auto') != 'auto':
             self._preview_remaining_seconds = None
             if self.preview_status:
                 self.preview_status.config(text='已复制到剪贴板，按 Esc 关闭')
@@ -518,7 +562,7 @@ class FloatingPillWindow:
         self._preview_close_after_id = None
 
     def _tick_preview_countdown(self):
-        if self.state != 'preview' or self._preview_user_editing:
+        if self.state != 'preview' or self._preview_user_editing or self._preview_edited:
             return
         if self._preview_remaining_seconds is None:
             return
@@ -561,14 +605,17 @@ class FloatingPillWindow:
             return
         self._sync_preview_clipboard()
         self._preview_user_editing = False
-        if self._preview_setting('close_mode', 'preview_close_mode', 'auto') == 'auto':
+        if self._preview_edited:
+            if self.preview_status:
+                self.preview_status.config(text='已编辑，自动关闭已停止')
+        elif self._preview_setting('close_mode', 'preview_close_mode', 'auto') == 'auto':
             self._tick_preview_countdown()
         elif self.preview_status:
             self.preview_status.config(text='已复制到剪贴板，按 Esc 关闭')
 
     def _auto_hide_preview(self):
         self._preview_close_after_id = None
-        if self.state == 'preview' and not self._preview_user_editing:
+        if self.state == 'preview' and not self._preview_user_editing and not self._preview_edited:
             self.hide()
 
     def _handle_preview_escape(self, event=None):
@@ -639,7 +686,7 @@ class FloatingPillWindow:
                 pass
 
     def _hide_after_external_paste(self):
-        if self.state == 'preview' and not self._preview_has_focus():
+        if self.state == 'preview' and not self._preview_has_focus() and not self._preview_edited:
             self.hide()
 
     def _confirm_preview(self):
@@ -647,27 +694,62 @@ class FloatingPillWindow:
         if not text:
             self.hide()
             return
-        self._set_clipboard(text)
+        if not self._set_clipboard(text):
+            if self.preview_status:
+                self.preview_status.config(text='剪贴板不可用，文字已保留，请手动复制')
+            return
         self._focus_target_window()
         self.root.after(140, self._paste_and_hide)
 
     def _paste_and_hide(self):
+        if not self._target_is_focused():
+            if self.preview_status:
+                self.preview_status.config(text='目标窗口已改变或不可验证；已保留文字，请手动粘贴')
+            return
         try:
             from pynput import keyboard as pynput_keyboard
             controller = pynput_keyboard.Controller()
-            if sys.platform == 'darwin':
-                with controller.pressed(pynput_keyboard.Key.cmd):
-                    controller.tap('v')
-            else:
-                with controller.pressed(pynput_keyboard.Key.ctrl):
-                    controller.tap('v')
+            with controller.pressed(pynput_keyboard.Key.ctrl):
+                controller.tap('v')
             try:
                 from core.tools.key_reset import release_all_modifier_keys
                 release_all_modifier_keys()
             except Exception:
                 pass
-        finally:
             self.hide()
+        except Exception:
+            if self.preview_status:
+                self.preview_status.config(text='写入未完成，文字已保留，请手动粘贴')
+
+    def _capture_target(self):
+        if sys.platform != 'win32':
+            return None
+        try:
+            import win32gui
+            import win32process
+            import psutil
+            hwnd = win32gui.GetForegroundWindow()
+            pid = win32process.GetWindowThreadProcessId(hwnd)[1]
+            if pid == os.getpid():
+                return None
+            return {'hwnd': hwnd, 'pid': pid, 'started': psutil.Process(pid).create_time()}
+        except Exception:
+            return None
+
+    def _target_is_focused(self):
+        target = self._target_identity
+        if sys.platform != 'win32' or not target:
+            return False
+        try:
+            import win32gui
+            import win32process
+            import psutil
+            return (win32gui.IsWindow(target['hwnd'])
+                    and win32gui.GetForegroundWindow() == target['hwnd']
+                    and win32process.GetWindowThreadProcessId(target['hwnd'])[1] == target['pid']
+                    and abs(psutil.Process(target['pid']).create_time() - target['started']) < 0.01)
+        except Exception:
+            return False
 
     def _set_clipboard(self, text):
         try:
@@ -701,7 +783,7 @@ class FloatingPillWindow:
 
     def _draw_caption_text(self, width, accent):
         text = self._format_text(self.text)
-        status = '??????...' if self.state == 'processing' else ('????' if self.state == 'final' else '????')
+        status = '正在识别…' if self.state == 'processing' else ('识别完成' if self.state == 'final' else '正在听写')
         self.canvas.create_text(
             34, 30,
             text=status,
@@ -733,7 +815,7 @@ class FloatingPillWindow:
     def _format_text(self, text):
         text = (text or '').strip()
         if not text:
-            return '????...'
+            return '正在听写…'
         text = ' '.join(text.split())
         limit = 72 if self._active_mode() == 'caption' else 46
         return text if len(text) <= limit else '...' + text[-limit:]
@@ -745,6 +827,9 @@ class FloatingPillWindow:
         self.root.after(0, self._do_hide)
 
     def _do_hide(self):
+        self.state = 'hidden'
+        self._preview_edited = False
+        self._target_identity = None
         self.stop_anim = True
         self.is_visible = False
         self._target_hwnd = None

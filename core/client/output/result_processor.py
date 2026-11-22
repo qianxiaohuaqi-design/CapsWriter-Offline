@@ -30,8 +30,9 @@ from core.client.output.input_history import append_input_history
 
 import os
 import threading
+from core.product.paths import data_root
 
-CONFIG_CLIENT_PATH = Path(__file__).resolve().parents[3] / 'config_client.py'
+CONFIG_CLIENT_PATH = data_root() / 'config_client.py'
 _CONFIG_AST_CACHE: dict[str, tuple[int, ast.AST]] = {}
 _CONFIG_AST_LOCK = threading.Lock()
 
@@ -84,6 +85,9 @@ def _estimate_tokens(text: str) -> int:
 async def _auto_enter(delay: float) -> None:
     """延迟发送回车键"""
     await asyncio.sleep(delay)
+    from core.product.focus import target_allows_output
+    if not target_allows_output():
+        return
     keyboard.press_and_release('enter')
     logger.debug(f"自动回车已发送 (延迟 {delay}s)")
 
@@ -235,6 +239,28 @@ class ResultProcessor:
             
 
     async def _handle_message(self, message: Optional[RecognitionMessage]) -> None:
+        from core.product.focus import output_target
+        targets = getattr(self.state, 'input_targets', None)
+        if targets is None:
+            targets = self.state.input_targets = {}
+        task_id = getattr(message, 'task_id', None)
+        is_final = message is not None and message.is_final
+        processing = getattr(self.state, 'processing_input_tasks', None)
+        if processing is None:
+            processing = self.state.processing_input_tasks = set()
+        if is_final:
+            targets.setdefault(task_id, None)
+            processing.add(task_id)
+        target = targets.get(task_id)
+        try:
+            with output_target(target):
+                await self._handle_message_impl(message)
+        finally:
+            if is_final:
+                processing.discard(task_id)
+                targets.pop(task_id, None)
+
+    async def _handle_message_impl(self, message: Optional[RecognitionMessage]) -> None:
         """处理接收到的消息"""
         if message is None:
             return
@@ -326,7 +352,7 @@ class ResultProcessor:
 
         # 自动回车检测
         for app, delay in Config.enter_apps:
-            if app.lower() == process_name:
+            if output_destination != 'overlay_preview' and app.lower() == process_name:
                 asyncio.create_task(_auto_enter(delay))
 
         # LLM 处理和输出
@@ -347,7 +373,8 @@ class ResultProcessor:
         else:
             if output_destination == 'overlay_preview':
                 if not self._show_overlay_preview(text):
-                    await self.output.output(text, paste=paste)
+                    from core.client.llm.llm_output_overlay import retain_preview_failure
+                    retain_preview_failure(text)
             else:
                 await self.output.output(text, paste=paste)
             self.state.set_output_text(text)
@@ -396,6 +423,13 @@ class ResultProcessor:
     
     def _cleanup(self) -> None:
         """清理资源"""
+        targets = getattr(self.state, 'input_targets', {})
+        processing = getattr(self.state, 'processing_input_tasks', set())
+        abandoned = [task_id for task_id in tuple(targets) if task_id not in processing]
+        for task_id in abandoned:
+            targets.pop(task_id, None)
+        if abandoned:
+            logger.warning('连接已中断，%s 个未返回的听写结果已结束等待；已有本地录音保持原状。', len(abandoned))
         if self.state.websocket is not None:
             try:
                 if self.state.websocket.closed:

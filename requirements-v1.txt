@@ -1,0 +1,12 @@
+# Windows x64 / Python 3.11.x. Preserve reviewed project pins; install in a new venv.
+# These pins are source requirements, not a statement that Windows build passed.
+-r requirements-lock-client.txt
+-r requirements-lock-server.txt
+
+# Runtime imports used by existing ASR engines but absent from the old lock pair.
+# Primary PyPI project metadata checked 2026-11-22; Windows integration still gated.
+sentencepiece==0.2.3
+soundfile==0.14.0
+pydub==0.25.1
+nagisa==0.3.2
+soynlp==0.0.493

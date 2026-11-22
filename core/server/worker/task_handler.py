@@ -38,11 +38,16 @@ class TaskBuffer:
         if not self._buffers:
             return None
 
-        tid, buf = next(reversed(self._buffers.items()))
+        # Preserve FIFO within each session; microphones get the next safe slot.
+        tid = next((key for key, items in self._buffers.items() if items[0].type == 'mic'),
+                   next(iter(self._buffers)))
+        buf = self._buffers[tid]
         task = buf.popleft()
 
         if not buf:
             del self._buffers[tid]
+        else:
+            self._buffers.move_to_end(tid)
 
         return task
 
@@ -78,6 +83,7 @@ class TaskHandler:
 
         self.buffer = TaskBuffer(state)
         self.gpu_boost = GpuBoostManager(state)
+        self.current_task = None
 
     def set_engine(self, recognizer, punc_model=None, aligner=None):
         """注入识别引擎实例并初始化管线"""
@@ -133,7 +139,11 @@ class TaskHandler:
 
     def handle_audio_task(self, task):
         """处理音频识别任务。"""
-        result = self.pipeline.process(task)
+        self.current_task = task
+        try:
+            result = self.pipeline.process(task)
+        finally:
+            self.current_task = None
         self.queue_out.put(result)
         if result.is_final:
             self.state.sessions.pop(task.task_id, None)

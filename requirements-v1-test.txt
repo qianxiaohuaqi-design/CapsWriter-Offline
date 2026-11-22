@@ -1,0 +1,32 @@
+# Python 3.11+ logical/control-center tests; no ASR model/runtime downloads.
+# Runtime pins are the needed subset of requirements-lock-client.txt.
+# unittest is built in; pytest also supports the targeted commands in receipts.
+pytest>=8,<10
+
+# Product state, process identity, GUI imports, and diagnostics.
+colorama==0.4.6
+rich==15.0.0
+psutil==7.2.2
+Pillow==12.3.0
+nicegui==3.15.0
+
+# Real recorder/file-adapter imports and subtitle output helpers.
+numpy==2.4.6
+websockets==15.0.1
+typer==0.27.0
+srt==3.5.3
+
+# ResultProcessor -> input/LLM/toast imports used by lifecycle boundary tests.
+# These tests do not activate a keyboard hook, clipboard, AI API, or device.
+keyboard==0.13.5
+pynput==1.8.2
+pyclip==0.7.0
+watchdog==6.0.0
+openai==2.51.0
+markdown==3.10.3
+tkhtmlview==0.3.2
+
+# tkinter/_tkinter and Tcl/Tk must be provided by the Python/system installation.
+# Headless Linux: PYNPUT_BACKEND=dummy; logical tests do not create a Tk window.
+# sounddevice is isolated by the lifecycle tests, not a real audio substitute.
+# Real ASR/audio, Windows hooks, tray, and packaging use requirements-v1.txt.

@@ -26,7 +26,8 @@ class CapsWriterServer:
     """
     def __init__(self):
         # 确保正确的工作目录
-        self.base_dir = Path(__file__).parents[2]
+        from core.product.paths import bootstrap
+        self.base_dir = bootstrap()
         os.chdir(self.base_dir)
 
         # 初始化事件循环

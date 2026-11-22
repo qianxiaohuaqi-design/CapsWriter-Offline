@@ -126,7 +126,11 @@ class HotwordManager:
 
     def _load_rule(self) -> None:
         content = self._read_file('rule')
-        num = self.rule_corrector.update_rules(content)
+        try:
+            num = self.rule_corrector.update_rules(content)
+        except ValueError as error:
+            logger.warning(f'规则未更新，继续使用上次有效规则：{error}')
+            return
         console.print(self._format_msg("规则库", "hot-rule.txt", num))
 
     def get_phoneme_corrector(self) -> PhonemeCorrector:

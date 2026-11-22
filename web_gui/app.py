@@ -25,13 +25,19 @@ from functools import partial
 from pathlib import Path
 
 # 添加项目根目录到 Python 路径
-BASE_DIR = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(BASE_DIR))
+RESOURCE_DIR = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(RESOURCE_DIR))
+from core.product.paths import bootstrap, resource_root, data_root
+BASE_DIR = bootstrap()
+RESOURCE_DIR = resource_root()
 
 from nicegui import ui, app, run
 from web_gui.ai_panel import render_ai_panel
 from web_gui.config_manager import ConfigManager
-from web_gui.transcription_service import get_media_tool_status, regenerate_srt_from_txt, transcribe_file
+from web_gui.transcription_service import get_media_tool_status, regenerate_srt_from_txt
+from web_gui.product_ui import ProductUI, observe_transcription as transcribe_file, task_parameters
+from core.product import bridge
+from core.product.cleanup import preview_files, delete_preview
 from web_gui import process_manager
 from web_gui.transcription_history import OUTPUT_DIR, delete_transcription_output, list_transcription_history
 from config_server import ModelPaths
@@ -52,7 +58,7 @@ if sys.platform == 'win32':
     except Exception:
         pass
 
-app.add_static_files('/assets', BASE_DIR / 'assets')
+app.add_static_files('/assets', RESOURCE_DIR / 'assets')
 
 _nicegui_notify = ui.notify
 
@@ -66,7 +72,7 @@ def _apply_native_window_icon():
     from ctypes import wintypes
     import time
 
-    ico_path = BASE_DIR / 'assets' / 'source' / 'capswriter.ico'
+    ico_path = RESOURCE_DIR / 'assets' / 'source' / 'capswriter.ico'
     if not ico_path.exists():
         return
 
@@ -250,6 +256,7 @@ def _apply_native_window_icon():
 def _on_startup_icon_task():
     t_startup_start = time.perf_counter()
     import threading
+    process_manager.write_pid(process_manager.GUI_PID_FILE, os.getpid())
     threading.Thread(target=_apply_native_window_icon, daemon=True).start()
     # 仅当 App 独立启动时才在后台拉起托盘，避免 run_app 托管时出现双重托盘
     if os.environ.get('CAPSWRITER_CONTROL_CENTER') != '1':
@@ -726,6 +733,18 @@ def model_install_status() -> dict[str, dict]:
     for model_type, files in model_required_files().items():
         missing = [path for path in files if not path.exists()]
         status[model_type] = {'installed': not missing, 'missing': missing}
+    from core.product.models import ModelCatalog, inspect_configured_model
+    from core.product.paths import model_root
+    import config_server
+    try:
+        for model in ModelCatalog().list_models(model_root()):
+            if model.get('installed'):
+                status[model['engine']] = {'installed': True, 'missing': []}
+        configured = inspect_configured_model(vars(config_server), base_root=BASE_DIR)
+        if configured.get('files_present') and not getattr(config_server.ServerConfig, '_product_model_error', ''):
+            status[configured['engine']] = {'installed': True, 'missing': []}
+    except (OSError, ValueError):
+        pass
     return status
 
 
@@ -801,7 +820,7 @@ def log_files() -> list[Path]:
 
 
 def transcription_output_dirs() -> list[Path]:
-    return [path for path in OUTPUT_DIR.iterdir() if path.is_dir()] if OUTPUT_DIR.exists() else []
+    return [item['folder'] for item in list_transcription_history(limit=5000)]
 
 
 def format_bytes(size: int) -> str:
@@ -911,8 +930,8 @@ def open_usage_guide_dialog() -> None:
             'hot.txt 用于常见词、品牌名、开发术语的固定修正；hot-rule.txt 用于邮箱、符号、标点、换行等更复杂的正则替换。修改后保存即可生效。',
         ),
         (
-            '语音识别与硬件',
-            '选择本地 ASR 模型、识别语言、输出格式和硬件加速策略。完整版通常已内置推荐模型；精简版需要先下载模型并放入 models 目录。',
+            '模型中心',
+            '选择本地 ASR 模型、识别语言、输出格式和硬件加速策略。安装版和便携版均不预装大型模型，可在模型中心下载。',
         ),
         (
             '字幕转写',
@@ -999,6 +1018,7 @@ def main_page():
     t_page_start = time.perf_counter()
     cfg = ConfigManager.get_all_config()
     health = process_manager.get_health_status()
+    product = ProductUI()
 
     refresh_all_js = '''() => {
             const button = document.getElementById('refresh-all');
@@ -1114,11 +1134,7 @@ def main_page():
         with ui.row().classes('items-center gap-4'):
             # 状态指示器
             with ui.row().classes('items-center gap-2 bg-slate-100 dark:bg-slate-800 px-3 py-1.5 rounded-full border border-slate-200 dark:border-slate-700'):
-                dot_class = 'bg-emerald-500' if health['server_alive'] and health['client_alive'] else 'bg-amber-500'
-                ui.element('span').classes(f'w-2.5 h-2.5 rounded-full {dot_class} animate-pulse')
-                ui.label(
-                    f"服务 {health['server_pid'] or '-'} / 客户端 {health['client_pid'] or '-'}"
-                ).classes('text-xs text-slate-600 dark:text-slate-300 font-medium')
+                product.header()
             
             refresh_all_button = ui.button(icon='refresh').props('flat round color=grey-8 id=refresh-all title="刷新所有配置"')
             refresh_all_button.on('click', js_handler=refresh_all_js)
@@ -1138,7 +1154,7 @@ def main_page():
                 tab_data = ui.tab('本地数据管理', icon='storage')
                 tab_ai = ui.tab('AI 润色与角色', icon='auto_awesome')
                 tab_hotwords = ui.tab('热词与替换规则', icon='rule')
-                tab_engine = ui.tab('语音识别与硬件', icon='graphic_eq')
+                tab_engine = ui.tab('模型中心', icon='graphic_eq')
                 tab_transcribe = ui.tab('字幕转写', icon='video_library')
                 tab_service = ui.tab('服务与诊断', icon='monitor_heart')
                 tab_backup = ui.tab('配置备份与迁移', icon='folder_zip')
@@ -1153,6 +1169,8 @@ def main_page():
                         with ui.column().classes('gap-1 border-b border-slate-100 dark:border-slate-800 pb-4 w-full'):
                             ui.label('通用与交互').classes('text-2xl font-bold text-slate-900 dark:text-white')
                             ui.label('配置 CapsWriter 在桌面上的触发热键、对讲模式、听写状态浮层及基础输入体验。').classes('text-sm text-slate-500 dark:text-slate-400')
+
+                        product.setup_banner()
 
                         # 卡片 1：热键与触发模式
                         ui.label('快捷键与对讲交互').classes('text-xs font-bold text-slate-400 uppercase tracking-wider mt-2')
@@ -1604,40 +1622,33 @@ def main_page():
 
                             ui.timer(1.5, auto_refresh_history, active=True)
 
-                        def delete_files(paths: list[Path]) -> tuple[int, int]:
-                            deleted = 0
-                            failed = 0
-                            for path in paths:
-                                try:
-                                    if path.exists() and path.is_file():
-                                        path.unlink()
-                                        deleted += 1
-                                except OSError:
-                                    failed += 1
-                            return deleted, failed
-
                         def delete_dirs(paths: list[Path]) -> tuple[int, int]:
-                            deleted = 0
-                            failed = 0
+                            deleted = failed = 0
                             for path in paths:
-                                try:
-                                    if path.exists() and path.is_dir():
-                                        shutil.rmtree(path)
-                                        deleted += 1
-                                except OSError:
-                                    failed += 1
+                                ok, _ = delete_transcription_output(path)
+                                deleted += int(ok)
+                                failed += int(not ok)
                             return deleted, failed
 
                         def confirm_file_cleanup(title: str, message: str, paths: list[Path], refresh, empty_message: str):
                             if not paths:
                                 ui.notify(empty_message, type='info')
                                 return
+                            try:
+                                preview = preview_files(BASE_DIR, paths)
+                            except (OSError, ValueError) as error:
+                                ui.notify(str(error), type='negative')
+                                return
                             with ui.dialog() as dialog, ui.card().classes('w-full max-w-md p-6 bg-white rounded-2xl gap-4'):
                                 ui.label(title).classes('text-lg font-bold text-slate-900')
                                 ui.label(message).classes('text-sm text-slate-500 leading-relaxed')
 
+                                with ui.expansion(f'查看 {len(preview)} 个文件，合计 {format_bytes(sum(item["size"] for item in preview))}').classes('w-full'):
+                                    for item in preview:
+                                        ui.label(str(Path(item['path']).relative_to(BASE_DIR))).classes('text-xs break-all')
+
                                 def apply_cleanup():
-                                    deleted, failed = delete_files(paths)
+                                    deleted, failed = delete_preview(BASE_DIR, preview)
                                     dialog.close()
                                     refresh()
                                     if failed:
@@ -1657,6 +1668,11 @@ def main_page():
                             with ui.dialog() as dialog, ui.card().classes('w-full max-w-md p-6 bg-white rounded-2xl gap-4'):
                                 ui.label(title).classes('text-lg font-bold text-slate-900')
                                 ui.label(message).classes('text-sm text-slate-500 leading-relaxed')
+
+                                with ui.expansion('查看将删除的输出目录').classes('w-full'):
+                                    for path in paths:
+                                        ui.label(str(path)).classes('text-xs break-all')
+                                ui.label('仅删除本程序拥有且不被运行任务引用的产物；未知旧目录保留。').classes('text-xs text-amber-800')
 
                                 def apply_cleanup():
                                     deleted, failed = delete_dirs(paths)
@@ -1891,17 +1907,25 @@ def main_page():
                                         open_button = ui.button('打开文件', icon='folder_open').props('outline color=grey-8').classes('h-8 px-2.5 rounded-lg text-xs bg-white')
                                         save_button = ui.button('保存', icon='save').classes('h-8 px-3 rounded-lg text-xs bg-amber-600 text-white')
 
-                                editor = ui.textarea(value=content).props('borderless spellcheck=false').classes('rule-editor w-full').style(f'--rule-editor-height: {height}px;')
+                                document = ConfigManager.read_hotword_document(path)
+                                edit_version = {'sha256': document['sha256']}
+                                editor = ui.textarea(value=document['text']).props('borderless spellcheck=false').classes('rule-editor w-full').style(f'--rule-editor-height: {height}px;')
 
                                 def refresh_file():
-                                    editor.value = path.read_text(encoding='utf-8') if path.exists() else ''
+                                    document = ConfigManager.read_hotword_document(path)
+                                    edit_version['sha256'] = document['sha256']
+                                    editor.value = document['text']
                                     editor.update()
                                     status_label.text = '已刷新'
                                     status_label.update()
                                     ui.notify(f'{path.name} 已重新读取。', type='info')
 
                                 def save_file():
-                                    ConfigManager.write_text_with_backup(path, editor.value or '')
+                                    ok, message = ConfigManager.save_hotword_document(path, editor.value or '', edit_version['sha256'])
+                                    if not ok:
+                                        ui.notify(message, type='negative')
+                                        return
+                                    edit_version['sha256'] = ConfigManager.read_hotword_document(path)['sha256']
                                     status_label.text = '已保存'
                                     status_label.update()
                                     ui.notify(f'{path.name} 已保存，下一次听写自动生效。', type='positive')
@@ -1930,8 +1954,11 @@ def main_page():
                 with ui.tab_panel(tab_engine):
                     with ui.column().classes('gap-6 w-full pb-8'):
                         with ui.column().classes('gap-1 border-b border-slate-100 dark:border-slate-800 pb-4 w-full'):
-                            ui.label('语音识别与硬件').classes('text-2xl font-bold text-slate-900 dark:text-white')
+                            ui.label('模型中心').classes('text-2xl font-bold text-slate-900 dark:text-white')
                             ui.label('选择离线识别模型、语言策略、数字格式化与显卡预加速；常用选项会在切换后自动保存。').classes('text-sm text-slate-500 dark:text-slate-400')
+
+                        product.model_center()
+                        ui.label('语言、输出与高级设置').classes('text-lg font-bold text-slate-800')
 
                         current_model_type = normalize_model_type(cfg.get('model_type', 'sensevoice'))
                         install_status = model_install_status()
@@ -1945,7 +1972,7 @@ def main_page():
                             for key, status in install_status.items()
                             if not status['installed']
                         }
-                        model_options = installed_model_options or missing_model_options
+                        model_options = {**installed_model_options, **missing_model_options}
                         if current_model_type not in model_options:
                             current_model_type = next(iter(model_options), 'sensevoice')
                         current_language = normalize_language_code(cfg.get('language', 'auto'))
@@ -1955,32 +1982,7 @@ def main_page():
                         current_model_status = install_status.get(current_model_type, {'installed': False, 'missing': []})
 
                         def open_model_setup_dialog():
-                            with ui.dialog() as dialog:
-                                with ui.card().classes('w-[720px] max-w-[92vw] p-6 rounded-xl gap-5'):
-                                    with ui.row().classes('items-start justify-between gap-4 w-full'):
-                                        with ui.column().classes('gap-1'):
-                                            ui.label('模型配置指引').classes('text-xl font-bold text-slate-900')
-                                            ui.label('精简版需要先下载 ASR 模型；完整版通常已经内置 SenseVoice-Small。').classes('text-sm text-slate-500')
-                                        ui.button(icon='close', on_click=dialog.close).props('flat round dense')
-
-                                    with ui.card().classes('w-full p-4 rounded-lg bg-amber-50 border border-amber-200 shadow-none gap-2'):
-                                        ui.label('推荐模型').classes('font-semibold text-amber-900')
-                                        ui.label('SenseVoice-Small：推荐新用户优先使用，体积较小，日常听写延迟低。').classes('text-sm text-amber-900/80')
-                                        ui.label('FunASR-Nano / Qwen3-ASR：适合想继续尝试更高识别能力的用户，体积和配置要求更高。').classes('text-sm text-amber-900/80')
-
-                                    with ui.column().classes('gap-2'):
-                                        ui.label('下载地址').classes('font-semibold text-slate-900')
-                                        ui.link(
-                                            'https://github.com/HaujetZhao/CapsWriter-Offline/releases/tag/models',
-                                            'https://github.com/HaujetZhao/CapsWriter-Offline/releases/tag/models',
-                                            new_tab=True,
-                                        ).classes('text-sm text-blue-600 break-all')
-                                        ui.label('这些是原项目整理的适配模型下载包，SenseVoice 本身是独立开源语音识别模型。').classes('text-sm text-slate-500')
-                                        ui.label('下载后解压到本程序的 models 目录，再回到这里确认模型状态。').classes('text-sm text-slate-500')
-
-                                    with ui.row().classes('items-center justify-end gap-2 w-full'):
-                                        ui.button('打开模型目录', icon='folder_open', on_click=lambda: open_path_foreground(BASE_DIR / 'models')).props('outline color=amber-8').classes('bg-white h-10 px-4 rounded-lg')
-                            dialog.open()
+                            product.open_wizard()
 
                         if not current_model_status['installed']:
                             with ui.card().classes('bg-amber-50 border border-amber-200 px-6 py-5 rounded-xl gap-3 w-full shadow-none'):
@@ -1991,7 +1993,7 @@ def main_page():
                                             ui.label('当前识别模型缺少本地文件').classes('font-bold text-amber-900 text-base')
                                             ui.label(
                                                 f'已选择 {MODEL_LABELS.get(current_model_type, current_model_type)}，但模型文件未安装完整。'
-                                                '精简版不会内置 ASR 模型，请先下载模型并解压到 models 目录后再启动听写服务。'
+                                                '安装版和便携版均不预装大型模型，请先通过上方模型中心安装或准备手动模型。'
                                             ).classes('text-sm text-amber-900/80')
                                             ui.label('推荐新用户优先安装 SenseVoice-Small。').classes('text-xs text-amber-800/80')
                                     with ui.row().classes('items-center gap-2 shrink-0'):
@@ -2102,20 +2104,12 @@ def main_page():
 
                         def save_model_selection():
                             selected_model = normalize_model_type(model_select.value)
-                            selected_status = install_status.get(selected_model, {'installed': False})
-                            if not selected_status['installed']:
-                                ui.notify('该模型文件未安装完整，已阻止保存。请先把模型放入 models 目录。', type='negative')
+                            model = next((item for item in product.state.get('models', []) if item['engine'] == selected_model), None)
+                            if not model or not model.get('installed'):
+                                ui.notify('该模型文件尚未安装，请先在上方模型中心安装或导入手动模型。', type='warning')
                                 return
-                            ConfigManager.set_model_type(selected_model)
+                            product.confirm_activate(model)
                             update_language_note()
-                            onnx_key = MODEL_ONNX_CONFIG_KEYS.get(selected_model)
-                            if onnx_key:
-                                onnx_provider_select.value = ConfigManager.get_server_class_var(MODEL_ARG_CLASSES[selected_model], 'onnx_provider', 'CPU')
-                                onnx_provider_select.update()
-                            llm_gpu_key = MODEL_LLM_GPU_CONFIG_KEYS.get(selected_model)
-                            llm_use_gpu_sw.value = bool(cfg.get(llm_gpu_key, False)) if llm_gpu_key else False
-                            llm_use_gpu_sw.update()
-                            ui.notify('识别模型已保存，重启听写服务后完全生效。', type='positive')
 
                         def save_language_selection():
                             ConfigManager.set_client_var('language', normalize_language_code(language_select.value))
@@ -2171,12 +2165,12 @@ def main_page():
                             with ui.card().classes('bg-slate-50 dark:bg-slate-800/50 border border-slate-200/60 dark:border-slate-700/60 p-6 rounded-xl gap-4 shadow-none'):
                                 ui.icon('file_upload', size='md').classes('text-amber-600 dark:text-emerald-400')
                                 ui.label('全量导入并还原配置方案').classes('font-bold text-slate-900 dark:text-white text-base')
-                                ui.label('选择或粘贴之前导出的 JSON 备份，校验后还原设置。导入后需要重新填写 API Key，并确认本地模型文件已放好。').classes('text-xs text-slate-500 dark:text-slate-400')
+                                ui.label('选择或粘贴之前导出的 JSON 备份，校验后还原设置。导入保留当前密钥，模型文件需要独立准备。').classes('text-xs text-slate-500 dark:text-slate-400')
 
                                 async def trigger_import_dialog():
                                     with ui.dialog() as dialog, ui.card().classes('w-full max-w-lg p-6 bg-white dark:bg-slate-900 rounded-2xl gap-4'):
                                         ui.label('导入配置 JSON 内容').classes('text-lg font-bold text-slate-900 dark:text-white')
-                                        ui.label('备份不会包含真实 API Key。导入后如果要使用 AI 润色或角色，请到 AI 页面重新填写密钥。').classes('text-xs text-slate-500')
+                                        ui.label('备份不包含真实 API Key；现有密钥不会因导入被清空。新电脑请到 AI 页面填写密钥。').classes('text-xs text-slate-500')
                                         import_input = ui.textarea(placeholder='拖拽或粘贴 config_backup.json 的文本内容到此处...').classes('w-full h-48 font-mono bg-slate-50 dark:bg-slate-950 p-3 rounded-xl border border-slate-200 dark:border-slate-800')
 
                                         async def choose_import_file():
@@ -2195,18 +2189,36 @@ def main_page():
                                                     ui.notify(f'读取导入文件失败：{e}', type='negative')
 
                                         def apply_import():
-                                            ok, msg = ConfigManager.import_full_config(import_input.value)
-                                            if ok:
-                                                ui.notify(msg, type='positive')
-                                                dialog.close()
-                                                ui.open('/')
-                                            else:
-                                                ui.notify(f"导入失败: {msg}", type='negative')
+                                            preview = ConfigManager.preview_full_config(import_input.value)
+                                            if not preview['ok']:
+                                                ui.notify(preview['message'], type='negative')
+                                                return
+                                            original = import_input.value
+                                            with ui.dialog() as confirm, ui.card().classes('w-full max-w-2xl p-6 gap-4'):
+                                                ui.label('确认配置变更').classes('text-xl font-bold')
+                                                ui.label('将先备份，再写入和读回核验；失败时恢复原配置。现有私有密钥保留。').classes('text-sm text-slate-600')
+                                                ui.label('涉及文件：' + ', '.join(preview['changes'])).classes('text-xs break-all')
+                                                with ui.scroll_area().classes('w-full h-56'):
+                                                    for change in preview.get('changed_settings', []):
+                                                        ui.label(f"{change['setting']}：{change['before']} → {change['after']}").classes('text-xs break-all mb-2')
+                                                    for warning in preview.get('warnings', []):
+                                                        ui.label(warning).classes('text-xs text-amber-800')
+                                                def confirm_import():
+                                                    ok, msg = ConfigManager.import_full_config(original, expected_token=preview['token'])
+                                                    ui.notify(msg, type='positive' if ok else 'negative')
+                                                    if ok:
+                                                        confirm.close()
+                                                        dialog.close()
+                                                        ui.navigate.to('/')
+                                                with ui.row().classes('w-full justify-end'):
+                                                    ui.button('返回', on_click=confirm.close).props('flat')
+                                                    ui.button('确认应用', on_click=confirm_import).props('color=amber-8')
+                                            confirm.open()
 
                                         with ui.row().classes('justify-end w-full gap-3 mt-2'):
                                             ui.button('选择 JSON 文件', icon='folder_open', on_click=choose_import_file).props('outline color=amber-8')
                                             ui.button('取消', on_click=dialog.close).props('flat color=grey')
-                                            ui.button('解析并还原', icon='check', on_click=apply_import).classes('bg-amber-600 dark:bg-emerald-600 text-white')
+                                            ui.button('预览变更', icon='check', on_click=apply_import).classes('bg-amber-600 dark:bg-emerald-600 text-white')
 
                                     dialog.open()
 
@@ -2302,6 +2314,7 @@ def main_page():
 
                 # === Tab 6: 📂 字幕转写 ===
                 with ui.tab_panel(tab_transcribe):
+                    product.tasks_panel()
                     with ui.column().classes('gap-6 w-full pb-8'):
                         with ui.column().classes('gap-1 border-b border-slate-100 dark:border-slate-800 pb-4 w-full'):
                             with ui.row().classes('items-start justify-between gap-4 w-full flex-wrap'):
@@ -2313,7 +2326,7 @@ def main_page():
                                     ui.button('输出目录', icon='folder_open', on_click=open_transcription_output_dir).props('outline color=grey-8').classes('h-9 px-3 rounded-lg text-sm bg-white')
 
                         with ui.card().classes('bg-slate-50 dark:bg-slate-800/50 border border-slate-200/60 dark:border-slate-700/60 p-6 rounded-xl gap-5 w-full shadow-none'):
-                            transcribe_state = {'running': False, 'last_result': None, 'task': None}
+                            transcribe_state = {'running': False, 'last_result': None, 'task': None, 'task_id': None}
                             selected_file = {'path': None}
                             batch_queue = {'files': []}
 
@@ -2325,7 +2338,7 @@ def main_page():
                                             ui.label('转写设置').classes('text-xl font-bold text-slate-900')
                                             ffmpeg_text = 'FFmpeg 可用' if tool_status['ok'] else '未检测到 FFmpeg'
                                             ffprobe_text = 'ffprobe 可用，进度更准确' if tool_status['full_progress'] else '未检测到 ffprobe，进度会较粗略'
-                                            ui.label(f'{ffmpeg_text}；{ffprobe_text}。语言、模型和分段参数来自“语音识别与硬件”。').classes('text-sm text-slate-500')
+                                            ui.label(f'{ffmpeg_text}；{ffprobe_text}。语言、模型和分段参数来自“模型中心”。').classes('text-sm text-slate-500')
                                         ui.button(icon='close', on_click=dialog.close).props('flat round color=grey-7')
 
                                     with ui.column().classes('gap-5 w-full px-6 py-5'):
@@ -2541,6 +2554,7 @@ def main_page():
                                 cancel_button.set_visibility(True)
 
                                 def on_progress(info):
+                                    transcribe_state['task_id'] = info.get('task_id')
                                     value = info['percent'] / 100
                                     progress.set_value(value)
                                     status_label.set_text(f"{info['detail']}（{info['percent']:.0f}%）")
@@ -2558,8 +2572,8 @@ def main_page():
                                     ui.notify(result.message, type='positive' if result.ok else 'negative')
                                 except asyncio.CancelledError:
                                     progress.set_value(0)
-                                    status_label.set_text('转写任务已取消。')
-                                    ui.notify('转写任务已取消。', type='warning')
+                                    status_label.set_text('界面观察已停止，真实任务状态请查看上方持久化列表。')
+                                    ui.notify('请在任务列表确认任务是否已安全停止。', type='warning')
                                 finally:
                                     transcribe_state['running'] = False
                                     transcribe_state['task'] = None
@@ -2572,13 +2586,14 @@ def main_page():
                                     return
                                 transcribe_state['task'] = asyncio.create_task(run_transcription(file_path))
 
-                            def cancel_transcription():
-                                task = transcribe_state.get('task')
-                                if task and not task.done():
-                                    task.cancel()
-                                    status_label.set_text('正在取消转写任务...')
+                            async def cancel_transcription():
+                                task_id = transcribe_state.get('task_id')
+                                if task_id:
+                                    result = await product.action('cancel_task', task_id=task_id)
+                                    if result:
+                                        status_label.set_text('已请求安全停止，正在等待当前推理完成。')
                                 else:
-                                    ui.notify('当前没有正在运行的转写任务。', type='info')
+                                    ui.notify('请在上方任务列表对具体任务选择安全停止。', type='info')
 
                             def clear_current_transcription_state():
                                 if transcribe_state['running']:
@@ -2636,50 +2651,14 @@ def main_page():
                                 if not files:
                                     ui.notify('请先选择批量文件。', type='warning')
                                     return
-                                if transcribe_state['running']:
-                                    ui.notify('已有转写任务正在进行中，请稍候。', type='warning')
-                                    return
-                                transcribe_state['running'] = True
-                                cancel_button.set_visibility(True)
-                                result_box.clear()
-                                try:
-                                    total = len(files)
-                                    for index, file_path in enumerate(files, start=1):
-                                        if not file_path.exists():
-                                            ui.notify(f'文件不存在，已跳过：{file_path.name}', type='warning')
-                                            continue
-                                        progress.set_value((index - 1) / total)
-                                        status_label.set_visibility(True)
-                                        status_label.set_text(f'批量转写 {index}/{total}：{file_path.name}')
-
-                                        def on_progress(info, i=index, count=total):
-                                            item_fraction = info['percent'] / 100 / count
-                                            progress.set_value((i - 1) / count + item_fraction)
-                                            status_label.set_text(f'批量转写 {i}/{count}：{info["detail"]}（{info["percent"]:.0f}%）')
-
-                                        result = await transcribe_file(file_path, on_progress)
-                                        transcribe_state['last_result'] = result
-                                        render_result(result)
-                                        if not result.ok:
-                                            ui.notify(f'{file_path.name} 转写失败：{result.message}', type='negative')
-                                    progress.set_value(1)
-                                    status_label.set_visibility(False)
-                                    ui.notify('批量队列处理完成。', type='positive')
-                                except asyncio.CancelledError:
-                                    progress.set_value(0)
-                                    status_label.set_text('批量转写已取消。')
-                                    ui.notify('批量转写已取消。', type='warning')
-                                finally:
-                                    transcribe_state['running'] = False
-                                    transcribe_state['task'] = None
-                                    cancel_button.set_visibility(False)
-                                    render_history()
-
-                            def start_batch_task():
-                                if transcribe_state['running']:
-                                    ui.notify('已有转写任务正在进行中，请稍候。', type='warning')
-                                    return
-                                transcribe_state['task'] = asyncio.create_task(run_batch_queue())
+                                queued = 0
+                                for file_path in files:
+                                    result = await product.action('submit_task', path=str(file_path), parameters=task_parameters())
+                                    if result:
+                                        queued += 1
+                                status_label.set_visibility(True)
+                                status_label.set_text(f'已保存 {queued} 项任务，请在任务列表查看进度或单项重试。')
+                                ui.notify(f'已加入 {queued} 项持久化任务。', type='positive' if queued else 'warning')
 
                             def open_batch_dialog():
                                 with ui.dialog() as dialog, ui.card().classes('w-full max-w-3xl p-0 bg-white rounded-2xl gap-0 overflow-hidden'):
@@ -2792,6 +2771,7 @@ def main_page():
 
                 # === Tab 7: 服务与诊断 ===
                 with ui.tab_panel(tab_service):
+                    product.diagnostics()
                     with ui.column().classes('gap-6 w-full pb-8'):
                         with ui.column().classes('gap-1 border-b border-slate-100 dark:border-slate-800 pb-4 w-full'):
                             ui.label('服务与诊断').classes('text-2xl font-bold text-slate-900 dark:text-white')
@@ -2827,21 +2807,23 @@ def main_page():
                             if not paths:
                                 ui.notify('没有 30 天前的旧日志需要清理。', type='info')
                                 return
+                            try:
+                                preview = preview_files(BASE_DIR, paths)
+                            except (OSError, ValueError) as error:
+                                ui.notify(str(error), type='negative')
+                                return
                             with ui.dialog() as dialog, ui.card().classes('w-full max-w-md p-6 bg-white rounded-2xl gap-4'):
                                 ui.label('清理 30 天前的旧日志？').classes('text-lg font-bold text-slate-900')
                                 ui.label(
                                     f'将删除 logs/ 下 {len(paths)} 个 30 天前的旧日志文件；不会删除最新 client_latest.log、server_latest.log，也不会删除配置、录音和转写输出。'
                                 ).classes('text-sm text-slate-500 leading-relaxed')
 
+                                with ui.expansion('查看旧日志清单').classes('w-full'):
+                                    for item in preview:
+                                        ui.label(str(Path(item['path']).relative_to(BASE_DIR))).classes('text-xs break-all')
+
                                 def apply_cleanup():
-                                    deleted = 0
-                                    failed = 0
-                                    for path in paths:
-                                        try:
-                                            path.unlink()
-                                            deleted += 1
-                                        except OSError:
-                                            failed += 1
+                                    deleted, failed = delete_preview(BASE_DIR, preview)
                                     dialog.close()
                                     render_diagnostics()
                                     ui.notify(
@@ -2859,10 +2841,12 @@ def main_page():
                                 ui.label('完全退出 CapsWriter？').classes('text-lg font-bold text-slate-900')
                                 ui.label('会关闭控制中心、听写客户端和 ASR 服务端。离线语音转文字会停止，之后需要重新启动程序。').classes('text-sm text-slate-500 leading-relaxed')
 
-                                def apply_stop_all():
-                                    ui.notify('正在完全退出 CapsWriter...', type='warning')
-                                    dialog.close()
-                                    ui.timer(0.2, lambda: process_manager.stop_all(include_self=True), once=True)
+                                async def apply_stop_all():
+                                    result = await run.io_bound(lambda: process_manager.stop_all(include_self=True))
+                                    if result.get('waiting'):
+                                        ui.notify(result['message'], type='warning', timeout=6000)
+                                    else:
+                                        dialog.close()
 
                                 with ui.row().classes('justify-end w-full gap-3'):
                                     ui.button('取消', on_click=dialog.close).props('flat color=grey-7')
@@ -2894,7 +2878,7 @@ def main_page():
                                     with ui.card().classes('bg-white border border-slate-200/60 p-4 rounded-xl gap-1 shadow-none'):
                                         ui.label('模型状态').classes('text-xs text-slate-500')
                                         ui.label('服务就绪' if state['model_loaded'] else '未就绪').classes('text-lg font-bold text-emerald-700' if state['model_loaded'] else 'text-lg font-bold text-amber-700')
-                                        ui.label('基于 6016 健康探测').classes('text-xs text-slate-500')
+                                        ui.label('基于当前 Worker 事件、身份与心跳').classes('text-xs text-slate-500')
                                 ui.label(f"项目相关进程：{len(set(project_pids))} 个").classes('text-xs text-slate-500')
 
                         def render_diagnostics():
@@ -2972,13 +2956,18 @@ if __name__ in {"__main__", "__mp_main__"}:
         except Exception:
             pass
 
-    app.native.window_args['resizable'] = True
+    if os.environ.get('CAPSWRITER_WEB_PREVIEW') != '1':
+        app.native.window_args['resizable'] = True
+        from core.product.native_window import install_close_notice
+        app.native.start_args['func'] = install_close_notice
     ui.run(
         title='CapsWriter',
-        favicon=BASE_DIR / 'assets' / 'source' / 'capswriter.ico',
+        favicon=RESOURCE_DIR / 'assets' / 'source' / 'capswriter.ico',
         port=6017,
         reload=False,
         dark=False,
-        native=True,
-        window_size=(1120, 740)
+        host='127.0.0.1',
+        show=False,
+        native=os.environ.get('CAPSWRITER_WEB_PREVIEW') != '1',
+        window_size=(1120, 740) if os.environ.get('CAPSWRITER_WEB_PREVIEW') != '1' else None
     )

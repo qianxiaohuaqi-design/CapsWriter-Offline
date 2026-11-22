@@ -108,6 +108,11 @@ async def paste_text(text: str, restore_clipboard: bool = True):
         text: 要粘贴的文本
         restore_clipboard: 粘贴后是否恢复原剪贴板内容
     """
+    from core.product.focus import target_allows_output, keep_for_manual_paste
+    if not target_allows_output():
+        keep_for_manual_paste(text)
+        return
+
     # 保存剪切板
     original = ''
     if restore_clipboard:
@@ -119,6 +124,10 @@ async def paste_text(text: str, restore_clipboard: bool = True):
     # 复制要粘贴的文本
     pyclip.copy(text)
     logger.debug(f"已复制文本到剪贴板，长度: {len(text)}")
+
+    if not target_allows_output():
+        keep_for_manual_paste(text)
+        return
 
     # 粘贴结果（使用 pynput 模拟 Ctrl+V）
     try:
@@ -140,5 +149,6 @@ async def paste_text(text: str, restore_clipboard: bool = True):
     # 还原剪贴板
     if restore_clipboard and original:
         await asyncio.sleep(0.3)
-        pyclip.copy(original)
-        logger.debug("剪贴板已恢复")
+        if safe_paste() == text:
+            pyclip.copy(original)
+            logger.debug("剪贴板已恢复")

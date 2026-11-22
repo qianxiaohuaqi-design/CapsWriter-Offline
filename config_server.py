@@ -5,7 +5,8 @@ from pathlib import Path
 __version__ = '2.6'
 
 # 项目根目录
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+from core.product.paths import data_root, model_root, apply_config_overrides
+BASE_DIR = str(data_root())
 
 
 # 服务端配置
@@ -49,7 +50,7 @@ class ModelPaths:
     """模型文件路径配置"""
 
     # 基础目录
-    model_dir = Path(BASE_DIR) / 'models'
+    model_dir = model_root()
 
     # Paraformer 模型路径
     paraformer_dir = model_dir / 'Paraformer' / "speech_paraformer-large-vad-punc_asr_nat-zh-cn-16k-common-vocab8404-onnx"
@@ -173,4 +174,9 @@ class ForceAlignerGGUFArgs:
     # 对齐细节
     n_ctx = 3072                # 上下文窗口大小
     dml_pad_to = 30             # 开启 DirectML 加速时，短音频统一填充到指定长度，有加速效果
+
+
+apply_config_overrides(__name__, globals())
+from core.product.configuration import apply_selected_model
+apply_selected_model(globals())
 

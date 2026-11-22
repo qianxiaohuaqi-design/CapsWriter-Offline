@@ -176,6 +176,10 @@ web_gui/input_history_cleared_at.txt
 web_gui/gui_settings.json
 web_gui/llm_profiles.json
 
+# V1 source-mode task, model-selection and process state (never source assets)
+/runtime/
+/product/
+
 # Local agent/test artifacts
 .playwright-mcp/
 assets_backup_old/
@@ -205,7 +209,10 @@ tools/ffmpeg/bin/*
 .agent
 
 diag*.py
+!core/product/diagnostics.py
 test_*.py 
+!tests/test_v1_*.py
+!v1-app.spec
 test_*.ipynb 
 test_*.md 
 test_*.txt

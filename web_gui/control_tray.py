@@ -16,9 +16,10 @@ from web_gui import process_manager
 from core.tools.icon_assets import ICON_PATH as SOURCE_ICON_PATH
 from core.tools.icon_assets import load_ico_frame
 
-BASE_DIR = Path(__file__).resolve().parent.parent
+from core.product.paths import data_root, resource_root
+BASE_DIR = data_root()
 ICON_PATH = SOURCE_ICON_PATH
-MASTER_ICON_PATH = BASE_DIR / 'assets' / 'source' / 'capswriter_master.png'
+MASTER_ICON_PATH = resource_root() / 'assets' / 'source' / 'capswriter_master.png'
 TRAY_OWNER_FILE = BASE_DIR / 'logs' / 'control_center_tray.pid'
 
 
@@ -110,10 +111,9 @@ class ControlTray:
 
         self._status_checked_at = now
         try:
-            server_pid = process_manager.read_alive_pid(process_manager.SERVER_PID_FILE, 'start_server')
-            client_pid = process_manager.read_alive_pid(process_manager.CLIENT_PID_FILE, 'start_client')
-            server_alive = bool(server_pid)
-            client_alive = bool(client_pid)
+            health = process_manager.get_health_status()
+            server_alive = health['model_loaded']
+            client_alive = health['can_dictate']
         except Exception:
             return self._status_cache
 
@@ -153,12 +153,15 @@ class ControlTray:
         with self._lock:
             # 1. 先请求产品级退出，确保客户端、服务端和模型子进程先停掉。
             try:
-                self.exit_app()
+                if self.exit_app() is False:
+                    return
             except Exception:
                 pass
-
+            from core.product.bridge import request
             try:
-                process_manager.stop_all(include_self=False)
+                if request('snapshot').get('shutting_down'):
+                    # Launcher observes exit-ready only after tasks safely drain.
+                    return
             except Exception:
                 pass
 
@@ -216,7 +219,7 @@ def start_tray_in_background(
     global _TRAY_INSTANCE, _TRAY_THREAD
     with _TRAY_LOCK:
         if _TRAY_THREAD and _TRAY_THREAD.is_alive():
-            return
+            return _TRAY_THREAD
         if not _claim_tray_owner():
             return
 
@@ -230,3 +233,4 @@ def start_tray_in_background(
         )
         _TRAY_THREAD = threading.Thread(target=_TRAY_INSTANCE.start, daemon=True)
         _TRAY_THREAD.start()
+        return _TRAY_THREAD

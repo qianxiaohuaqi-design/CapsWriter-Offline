@@ -45,6 +45,7 @@ class RecognizerWorker:
         # 3. 状态追踪
         self.stdin_fn = stdin_fn
         self._is_running = False
+        self._publisher = None
 
     def _setup_environment(self):
         """配置运行环境 (输入接管、信号处理、资源回收)"""
@@ -97,6 +98,13 @@ class RecognizerWorker:
         self._is_running = True
 
         self.initialize()
+        from core.product.status import StatusPublisher
+        self._publisher = StatusPublisher('inference', lambda: {
+            'state': 'busy' if self.handler.current_task else 'idle',
+            'task_type': getattr(self.handler.current_task, 'type', None),
+            'task_id': getattr(self.handler.current_task, 'task_id', None),
+            'ready': self._is_running,
+        }).start()
         
         # 2. 进入循环
         try:
@@ -113,6 +121,10 @@ class RecognizerWorker:
         if not self._is_running:
             return
         self._is_running = False
+        if self.ready_event:
+            self.ready_event.clear()
+        if self._publisher:
+            self._publisher.stop()
 
         logger.info("正在停止 Worker 并回收资源...")
         self.loader.cleanup()

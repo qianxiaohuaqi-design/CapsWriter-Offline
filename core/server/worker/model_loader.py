@@ -37,6 +37,8 @@ class ModelLoader:
         3. 自适应挂载缺失能力的插件 (Punc, Aligner)
         """
         t1 = time.time()
+        if getattr(Config, '_product_model_error', ''):
+            raise RuntimeError(Config._product_model_error)
         model_type = Config.model_type.lower()
         logger.info(f"Loader 开始初始化语音系统 (引擎: {model_type})")
 

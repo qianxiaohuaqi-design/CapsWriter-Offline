@@ -6,26 +6,39 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-BASE_DIR = Path(__file__).resolve().parent.parent
+from core.product.paths import data_root
+BASE_DIR = data_root()
 PRIVATE_CONFIG_PATH = BASE_DIR / 'web_gui' / 'private_config.json'
 
 
-def load_private_config() -> dict:
+def load_private_config(*, strict: bool = False) -> dict:
     if not PRIVATE_CONFIG_PATH.exists():
         return {'llm_api_keys': {}, 'llm_role_api_keys': {}, 'llm_profile_api_keys': {}}
     try:
         data = json.loads(PRIVATE_CONFIG_PATH.read_text(encoding='utf-8'))
+        if not isinstance(data, dict) or any(not isinstance(data.get(key, {}), dict) for key in ('llm_api_keys', 'llm_role_api_keys', 'llm_profile_api_keys')):
+            raise ValueError('Invalid private configuration')
         data.setdefault('llm_api_keys', {})
         data.setdefault('llm_role_api_keys', {})
         data.setdefault('llm_profile_api_keys', {})
         return data
-    except Exception:
-        return {'llm_api_keys': {}, 'llm_role_api_keys': {}, 'llm_profile_api_keys': {}}
+    except Exception as error:
+        message = '私有密钥配置损坏；原文件保留，请先恢复后再修改密钥。'
+        if strict:
+            raise ValueError(message) from error
+        return {'llm_api_keys': {}, 'llm_role_api_keys': {}, 'llm_profile_api_keys': {}, '_error': message}
 
 
 def save_private_config(data: dict) -> None:
+    if data.get('_error'):
+        raise ValueError(data['_error'])
     PRIVATE_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
-    PRIVATE_CONFIG_PATH.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding='utf-8')
+    from core.product.data_safety import atomic_write
+    atomic_write(PRIVATE_CONFIG_PATH, json.dumps(data, ensure_ascii=False, indent=2).encode('utf-8'))
+    try:
+        PRIVATE_CONFIG_PATH.chmod(0o600)
+    except OSError:
+        pass
 
 
 def get_llm_api_key(provider: str, fallback: str = '') -> str:
@@ -34,7 +47,7 @@ def get_llm_api_key(provider: str, fallback: str = '') -> str:
 
 
 def set_llm_api_key(provider: str, api_key: str) -> None:
-    data = load_private_config()
+    data = load_private_config(strict=True)
     data.setdefault('llm_api_keys', {})
     if api_key:
         data['llm_api_keys'][provider] = api_key
@@ -77,7 +90,7 @@ def get_llm_role_api_key(role_id: str, provider: str, fallback: str = '', profil
 
 
 def set_llm_role_api_key(role_id: str, api_key: str) -> None:
-    data = load_private_config()
+    data = load_private_config(strict=True)
     data.setdefault('llm_role_api_keys', {})
     if api_key:
         data['llm_role_api_keys'][role_id] = api_key
@@ -92,7 +105,7 @@ def get_llm_profile_api_key(profile_id: str, fallback: str = '') -> str:
 
 
 def set_llm_profile_api_key(profile_id: str, api_key: str) -> None:
-    data = load_private_config()
+    data = load_private_config(strict=True)
     data.setdefault('llm_profile_api_keys', {})
     if api_key:
         data['llm_profile_api_keys'][profile_id] = api_key

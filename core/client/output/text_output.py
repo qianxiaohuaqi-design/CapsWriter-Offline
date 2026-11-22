@@ -87,6 +87,11 @@ class TextOutput:
         if not text:
             return
         
+        from core.product.focus import target_allows_output, keep_for_manual_paste
+        if not target_allows_output():
+            keep_for_manual_paste(text)
+            return
+
         # 确定输出方式
         if paste is None:
             paste = Config.paste
@@ -105,38 +110,9 @@ class TextOutput:
         """
         logger.debug(f"使用粘贴方式输出文本，长度: {len(text)}")
         
-        # 保存剪贴板
-        try:
-            temp = pyclip.paste().decode('utf-8')
-        except Exception:
-            temp = ''
-        
-        # 复制结果
-        pyclip.copy(text)
-        
-        # 粘贴结果（使用 pynput 模拟 Ctrl+V）
-        try:
-            controller = pynput_keyboard.Controller()
-            if platform.system() == 'Darwin':
-                # macOS: Command+V
-                with controller.pressed(pynput_keyboard.Key.cmd):
-                    controller.tap('v')
-            else:
-                # Windows/Linux: Ctrl+V
-                with controller.pressed(pynput_keyboard.Key.ctrl):
-                    controller.tap('v')
-        finally:
-            from core.tools.key_reset import release_all_modifier_keys
-            release_all_modifier_keys()
-        
-        logger.debug("已发送粘贴命令 (Ctrl+V)")
-        
-        # 还原剪贴板
-        if Config.restore_clip:
-            await asyncio.sleep(0.3)
-            pyclip.copy(temp)
-            logger.debug("剪贴板已恢复")
-    
+        from core.client.clipboard import paste_text
+        await paste_text(text, restore_clipboard=Config.restore_clip)
+
     def _type_text(self, text: str) -> None:
         """
         通过模拟打字方式输出文本
@@ -151,5 +127,7 @@ class TextOutput:
         if not clean_text:
             return
         logger.debug(f"使用打字方式输出文本，长度: {len(clean_text)}")
-        keyboard.write(clean_text)
+        from core.product.focus import guarded_write, keep_for_manual_paste
+        if not guarded_write(clean_text, keyboard.write):
+            keep_for_manual_paste(text)
 

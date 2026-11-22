@@ -112,6 +112,8 @@ class ToastWindowBase(ABC):
         self.streaming = streaming
         self.markdown = markdown_enabled
         self.editable = editable
+        self.user_edited = False
+        self._last_edit_text = None
         self.duration = duration
         self.initial_width = initial_width
         self.initial_height = initial_height
@@ -334,10 +336,27 @@ class ToastWindowBase(ABC):
     # 窗口销毁
     # --------------------------------------------------------
 
+    def _on_content_modified(self, event=None) -> None:
+        widget = getattr(self, 'md_label', None)
+        if widget is None or not widget.edit_modified():
+            return
+        widget.edit_modified(False)
+        value = widget.get('1.0', 'end-1c')
+        if value != self._last_edit_text:
+            self.user_edited = True
+            self._last_edit_text = value
+            self.full_text = value
+            if self.timer_id:
+                self.window.after_cancel(self.timer_id)
+                self.timer_id = None
+
     def _start_destroy_timer(self) -> None:
         """启动自动销毁计时器"""
         if self.timer_id:
             self.window.after_cancel(self.timer_id)
+            self.timer_id = None
+        if self.user_edited:
+            return
         self.timer_id = self.window.after(self.duration, self._destroy_window)
 
     def _destroy_window(self, event: Optional[tk.Event] = None) -> None:
@@ -436,6 +455,9 @@ class ToastWindowBase(ABC):
             # NORMAL 状态下可以选择和编辑文字
             if self.editable:
                 self.md_label.config(state=tk.NORMAL)
+                self._last_edit_text = self.md_label.get('1.0', 'end-1c')
+                self.md_label.edit_modified(False)
+                self.md_label.bind('<<Modified>>', self._on_content_modified)
                 
                 # 设置光标颜色为背景色的反色
                 cursor_color = self._invert_color(self.bg)

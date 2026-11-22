@@ -25,7 +25,8 @@ from web_gui.private_config import (
     set_llm_role_api_key,
 )
 
-BASE_DIR = Path(__file__).resolve().parent.parent
+from core.product.paths import data_root
+BASE_DIR = data_root()
 CONFIG_CLIENT_PATH = BASE_DIR / 'config_client.py'
 CONFIG_SERVER_PATH = BASE_DIR / 'config_server.py'
 LLM_DEFAULT_PATH = BASE_DIR / 'LLM' / 'default.py'
@@ -88,7 +89,8 @@ class ConfigManager:
     @staticmethod
     def save_gui_settings(settings: dict) -> bool:
         GUI_SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
-        GUI_SETTINGS_PATH.write_text(json.dumps(settings, ensure_ascii=False, indent=2), encoding='utf-8')
+        from core.product.data_safety import atomic_write
+        atomic_write(GUI_SETTINGS_PATH, json.dumps(settings, ensure_ascii=False, indent=2).encode('utf-8'))
         return True
 
     @staticmethod
@@ -125,7 +127,6 @@ class ConfigManager:
     def load_llm_profiles(include_keys: bool = False) -> dict:
         if not LLM_PROFILES_PATH.exists():
             data = ConfigManager._default_profiles_data()
-            ConfigManager.write_text_with_backup(LLM_PROFILES_PATH, json.dumps(data, ensure_ascii=False, indent=2))
         else:
             try:
                 data = json.loads(LLM_PROFILES_PATH.read_text(encoding='utf-8'))
@@ -187,7 +188,8 @@ class ConfigManager:
             if path.name in {'__init__.py', 'default.py'}:
                 continue
             content = path.read_text(encoding='utf-8')
-            content = re.sub(r"(^api_key\s*=\s*')[^']*(')", r"\1\2", content, flags=re.MULTILINE)
+            from core.product.data_safety import safe_role
+            content = safe_role(content)
             roles.append({'file': path.name, 'content': content})
         return roles
 
@@ -206,11 +208,11 @@ class ConfigManager:
             if not safe_name.endswith('.py'):
                 continue
             target = (LLM_DIR / safe_name).resolve()
-            if not str(target).startswith(str(LLM_DIR.resolve())):
+            if target.parent != LLM_DIR.resolve() or target.is_symlink():
                 continue
-            content = re.sub(r"(^api_key\s*=\s*')[^']*(')", r"\1\2", content, flags=re.MULTILINE)
+            from core.product.data_safety import safe_role
+            content = safe_role(content)
             ConfigManager.write_text_with_backup(target, content)
-            set_llm_role_api_key(f'LLM.{target.stem}', '')
             imported += 1
         return imported
 
@@ -350,77 +352,22 @@ class ConfigManager:
 
     @staticmethod
     def _set_python_var(path: Path, var_name: str, value) -> bool:
-        """Replace one Python assignment, including a multiline value."""
-        if not path.exists():
+        if not path.is_file():
             return False
-
-        content = path.read_text(encoding='utf-8')
-        tree = ast.parse(content)
-        assignment = next(
-            (
-                node
-                for node in ast.walk(tree)
-                if isinstance(node, (ast.Assign, ast.AnnAssign))
-                and any(
-                    isinstance(target, ast.Name) and target.id == var_name
-                    for target in (node.targets if isinstance(node, ast.Assign) else [node.target])
-                )
-            ),
-            None,
-        )
-
-        value_text = repr(value)
-        if assignment is None:
-            content += f'\n{var_name} = {value_text}\n'
-        else:
-            lines = content.splitlines(keepends=True)
-            start = sum(len(line) for line in lines[:assignment.lineno - 1]) + assignment.col_offset
-            end = sum(len(line) for line in lines[:assignment.end_lineno - 1]) + assignment.end_col_offset
-            content = f'{content[:start]}{var_name} = {value_text}{content[end:]}'
-
-        ConfigManager.write_text_with_backup(path, content)
-        return True
+        from core.product.data_safety import replace_assignment
+        return ConfigManager.write_text_with_backup(
+            path, replace_assignment(path.read_text(encoding='utf-8'), var_name, value))
 
     @staticmethod
     def _set_python_class_var(path: Path, class_name: str, var_name: str, value) -> bool:
-        """Replace one assignment inside a Python class body."""
-        if not path.exists():
+        if not path.is_file():
             return False
-
-        content = path.read_text(encoding='utf-8')
-        tree = ast.parse(content)
-        class_node = next(
-            (node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == class_name),
-            None,
-        )
-        if class_node is None:
+        from core.product.data_safety import replace_assignment
+        try:
+            content = replace_assignment(path.read_text(encoding='utf-8'), var_name, value, class_name)
+        except ValueError:
             return False
-
-        assignment = next(
-            (
-                node
-                for node in class_node.body
-                if isinstance(node, (ast.Assign, ast.AnnAssign))
-                and any(
-                    isinstance(target, ast.Name) and target.id == var_name
-                    for target in (node.targets if isinstance(node, ast.Assign) else [node.target])
-                )
-            ),
-            None,
-        )
-
-        value_text = repr(value)
-        lines = content.splitlines(keepends=True)
-        if assignment is None:
-            insert_at = sum(len(line) for line in lines[:class_node.end_lineno - 1])
-            content = f'{content[:insert_at]}    {var_name} = {value_text}\n{content[insert_at:]}'
-        else:
-            start = sum(len(line) for line in lines[:assignment.lineno - 1]) + assignment.col_offset
-            end = sum(len(line) for line in lines[:assignment.end_lineno - 1]) + assignment.end_col_offset
-            content = f'{content[:start]}{var_name} = {value_text}{content[end:]}'
-
-        ConfigManager.write_text_with_backup(path, content)
-        return True
+        return ConfigManager.write_text_with_backup(path, content)
 
     @staticmethod
     def _backup_name(path: Path, timestamp: str) -> str:
@@ -431,6 +378,15 @@ class ConfigManager:
     def write_text_with_backup(path: Path, content: str) -> bool:
         """写配置前自动备份旧文件，并用临时文件原子替换。"""
         path = Path(path)
+        if path.is_symlink() or BASE_DIR.resolve() not in path.resolve().parents:
+            raise ValueError('配置路径超出本机数据目录或属于链接。')
+        if path == HOT_RULE_TXT_PATH:
+            from core.product.data_safety import validate_rules
+            validate_rules(content)
+        if path.suffix == '.py':
+            ast.parse(content)
+        if path.suffix == '.json':
+            json.loads(content)
         old_content = path.read_text(encoding='utf-8') if path.exists() else None
         if old_content == content:
             return True
@@ -441,10 +397,8 @@ class ConfigManager:
             backup_path = CONFIG_BACKUP_DIR / ConfigManager._backup_name(path, timestamp)
             shutil.copy2(path, backup_path)
 
-        path.parent.mkdir(parents=True, exist_ok=True)
-        tmp_path = path.with_name(f'{path.name}.tmp')
-        tmp_path.write_text(content, encoding='utf-8')
-        os.replace(tmp_path, path)
+        from core.product.data_safety import atomic_write
+        atomic_write(path, content.encode('utf-8'))
         return True
 
     @staticmethod
@@ -481,13 +435,20 @@ class ConfigManager:
     @staticmethod
     def restore_config_backup(backup_path: str | Path):
         backup = Path(backup_path)
-        if not backup.exists() or backup.suffix != '.bak':
-            return False, f'备份文件不存在：{backup}'
-
+        if backup.is_symlink() or backup.resolve().parent != CONFIG_BACKUP_DIR.resolve() or not backup.is_file() or backup.suffix != '.bak':
+            return False, '只能恢复本应用备份目录内的普通备份文件。'
         target_key = backup.name[:-4].rsplit('.', 1)[0].replace('__', '/')
-        target = MANAGED_CONFIG_PATHS.get(target_key, BASE_DIR / target_key)
+        target = MANAGED_CONFIG_PATHS.get(target_key)
+        if target is None:
+            possible = BASE_DIR / target_key
+            if possible.parent.resolve() != LLM_DIR.resolve() or possible.suffix != '.py' or possible.name in {'__init__.py', 'default.py'}:
+                return False, '备份目标不是受管理的配置文件。'
+            target = possible
         content = backup.read_text(encoding='utf-8')
-        ConfigManager.write_text_with_backup(target, content)
+        try:
+            ConfigManager.write_text_with_backup(target, content)
+        except (ValueError, OSError, SyntaxError) as error:
+            return False, f'恢复被阻止：{error}'
         return True, f'已恢复：{target_key}'
 
     @staticmethod
@@ -580,7 +541,8 @@ class ConfigManager:
             'hot_rules_content': hot_rule_text,
             'llm_roles': ConfigManager.export_llm_roles(),
         }
-        return full_data
+        from core.product.data_safety import redact
+        return redact(full_data)
 
     @staticmethod
     def export_full_config_to_file() -> Path:
@@ -601,135 +563,238 @@ class ConfigManager:
         except Exception as e:
             return False, f'读取导入文件失败：{e}'
 
-    # --- 全量配置导入 (Import) ---
     @staticmethod
-    def import_full_config(data):
-        """
-        解析并校验配置字典或 JSON 文本，回写所有配置文件
-        """
+    def _prepare_import(data):
+        from core.product.data_safety import (fingerprint, pending_imports, redact,
+            replace_assignment, safe_role, transaction_token, validate_rules)
         if isinstance(data, str):
-            try:
-                data = json.loads(data)
-            except Exception as e:
-                return False, f"JSON 解析失败: {str(e)}"
-        
-        if not isinstance(data, dict) or 'configs' not in data:
-            return False, "无效的配置备份数据结构"
-
-        configs = data.get('configs', {})
-        
-        # 1. 还原按键与触发模式
-        if 'shortcut' in configs:
-            ConfigManager.set_active_shortcut(configs['shortcut'])
-        if 'hold_mode' in configs:
-            ConfigManager.set_hold_mode(configs['hold_mode'])
-
-        # 2. 还原客户端变量
-        if 'paste_mode' in configs:
-            ConfigManager.set_client_var('paste', configs['paste_mode'])
-        if 'output_destination' in configs:
-            ConfigManager.set_client_var('output_destination', configs['output_destination'])
-        for key in ('preview_close_mode', 'preview_base_seconds', 'preview_seconds_per_20_chars', 'preview_max_seconds'):
-            if key in configs:
-                ConfigManager.set_client_var(key, configs[key])
-        for key in (
-            'llm_role_output_destination',
-            'llm_role_preview_close_mode',
-            'llm_role_preview_base_seconds',
-            'llm_role_preview_seconds_per_20_chars',
-            'llm_role_preview_max_seconds',
-        ):
-            if key in configs:
-                ConfigManager.set_client_var(key, configs[key])
-        if 'save_audio' in configs:
-            ConfigManager.set_client_var('save_audio', configs['save_audio'])
-        if 'save_diary' in configs:
-            ConfigManager.set_client_var('save_diary', configs['save_diary'])
-        if 'paste_apps' in configs:
-            ConfigManager.set_client_var('paste_apps', configs['paste_apps'])
-        if 'enter_apps' in configs:
-            ConfigManager.set_client_var('enter_apps', configs['enter_apps'])
-        if 'traditional_convert' in configs:
-            ConfigManager.set_client_var('traditional_convert', configs['traditional_convert'])
-        if 'language' in configs:
-            ConfigManager.set_client_var('language', configs['language'])
-        if 'hot_enabled' in configs:
-            ConfigManager.set_client_var('hot', configs['hot_enabled'])
-        if 'hot_rule_enabled' in configs:
-            ConfigManager.set_client_var('hot_rule', configs['hot_rule_enabled'])
-        if 'hot_thresh' in configs:
-            ConfigManager.set_client_var('hot_thresh', configs['hot_thresh'])
-        if 'hot_similar' in configs:
-            ConfigManager.set_client_var('hot_similar', configs['hot_similar'])
-        for key in ('mic_seg_duration', 'mic_seg_overlap', 'file_seg_duration', 'file_seg_overlap'):
-            if key in configs:
-                ConfigManager.set_client_var(key, configs[key])
-        for key in ('file_save_srt', 'file_save_txt', 'file_save_json', 'file_save_merge', 'history_auto_clear_on_start', 'history_max_items'):
-            if key in configs:
-                ConfigManager.set_client_var(key, configs[key])
-
-        # 3. 还原服务端变量
-        if 'model_type' in configs:
-            ConfigManager.set_model_type(configs['model_type'])
-        if 'format_num' in configs:
-            ConfigManager.set_server_var('format_num', configs['format_num'])
-        if 'format_spell' in configs:
-            ConfigManager.set_server_var('format_spell', configs['format_spell'])
-        if 'gpu_boost' in configs:
-            ConfigManager.set_server_var('gpu_boost_enabled', configs['gpu_boost'])
-        for key in ('gpu_boost_cmd', 'gpu_unboost_cmd', 'gpu_unboost_timeout'):
-            if key in configs:
-                ConfigManager.set_server_var(key, configs[key])
-        if 'aligner_timeout' in configs:
-            ConfigManager.set_server_var('aligner_idle_timeout', configs['aligner_timeout'])
-        server_class_fields = {
-            'sensevoice_onnx_provider': ('SenseVoiceArgs', 'onnx_provider'),
-            'sensevoice_dml_pad_to': ('SenseVoiceArgs', 'dml_pad_to'),
-            'fun_asr_onnx_provider': ('FunASRNanoGGUFArgs', 'onnx_provider'),
-            'fun_asr_llm_use_gpu': ('FunASRNanoGGUFArgs', 'llm_use_gpu'),
-            'fun_asr_dml_pad_to': ('FunASRNanoGGUFArgs', 'dml_pad_to'),
-            'qwen_asr_onnx_provider': ('Qwen3ASRGGUFArgs', 'onnx_provider'),
-            'qwen_asr_llm_use_gpu': ('Qwen3ASRGGUFArgs', 'llm_use_gpu'),
-            'qwen_asr_dml_pad_to': ('Qwen3ASRGGUFArgs', 'dml_pad_to'),
-            'aligner_onnx_provider': ('ForceAlignerGGUFArgs', 'onnx_provider'),
-            'aligner_llm_use_gpu': ('ForceAlignerGGUFArgs', 'llm_use_gpu'),
-            'aligner_dml_pad_to': ('ForceAlignerGGUFArgs', 'dml_pad_to'),
+            if len(data.encode('utf-8')) > 8 * 1024 * 1024:
+                raise ValueError('配置备份过大，不能导入。')
+            data = json.loads(data)
+        if not isinstance(data, dict) or not isinstance(data.get('configs'), dict):
+            raise ValueError('无效的配置备份结构。')
+        if pending_imports(CONFIG_BACKUP_DIR):
+            raise ValueError('存在上次未完成的配置导入，请先在诊断中恢复原配置。')
+        data = redact(data)
+        configs = data['configs']
+        staged = {}
+        warnings = ['私有 API Key 保留在本机，不从普通备份导入或清空。', '服务参数在确认后保存；运行中的模型不会被此操作自动重启。']
+        def read(path):
+            if path in staged:
+                return staged[path]
+            if not path.is_file() or path.is_symlink():
+                raise ValueError(f'缺少可写的本地配置：{path.name}')
+            return path.read_text(encoding='utf-8')
+        def put(path, name, value, cls=None):
+            staged[path] = replace_assignment(read(path), name, value, cls)
+        aliases = {'paste_mode': 'paste', 'hot_enabled': 'hot', 'hot_rule_enabled': 'hot_rule'}
+        client_fields = {
+            'paste_mode', 'output_destination', 'preview_close_mode', 'preview_base_seconds',
+            'preview_seconds_per_20_chars', 'preview_max_seconds', 'save_audio', 'save_diary',
+            'paste_apps', 'enter_apps', 'traditional_convert', 'language', 'hot_enabled',
+            'hot_rule_enabled', 'hot_thresh', 'hot_similar', 'mic_seg_duration', 'mic_seg_overlap',
+            'file_seg_duration', 'file_seg_overlap', 'file_save_srt', 'file_save_txt', 'file_save_json',
+            'file_save_merge', 'history_auto_clear_on_start', 'history_max_items',
+            'llm_role_output_destination', 'llm_role_preview_close_mode',
+            'llm_role_preview_base_seconds', 'llm_role_preview_seconds_per_20_chars', 'llm_role_preview_max_seconds',
         }
-        for config_key, (class_name, var_name) in server_class_fields.items():
-            if config_key in configs:
-                ConfigManager.set_server_class_var(class_name, var_name, configs[config_key])
-
-        # 4. 还原听写状态浮层
+        bools = {'paste_mode', 'save_audio', 'save_diary', 'traditional_convert', 'hot_enabled',
+                 'hot_rule_enabled', 'file_save_srt', 'file_save_txt', 'file_save_json', 'file_save_merge',
+                 'history_auto_clear_on_start', 'hold_mode', 'pill_overlay', 'llm_enabled',
+                 'format_num', 'format_spell', 'gpu_boost', 'fun_asr_llm_use_gpu', 'qwen_asr_llm_use_gpu', 'aligner_llm_use_gpu'}
+        numeric = {'preview_base_seconds', 'preview_seconds_per_20_chars', 'preview_max_seconds',
+                   'hot_thresh', 'hot_similar', 'mic_seg_duration', 'mic_seg_overlap', 'file_seg_duration',
+                   'file_seg_overlap', 'history_max_items', 'llm_role_preview_base_seconds',
+                   'llm_role_preview_seconds_per_20_chars', 'llm_role_preview_max_seconds',
+                   'aligner_timeout', 'gpu_unboost_timeout', 'sensevoice_dml_pad_to', 'fun_asr_dml_pad_to',
+                   'qwen_asr_dml_pad_to', 'aligner_dml_pad_to'}
+        enums = {'output_destination': {'typing', 'overlay_preview'}, 'preview_close_mode': {'auto', 'manual'},
+                 'llm_role_output_destination': {'typing', 'overlay_preview', 'toast', 'inherit'},
+                 'llm_role_preview_close_mode': {'auto', 'manual'},
+                 'model_type': {'sensevoice', 'paraformer', 'funasr', 'fun_asr', 'qwen3', 'qwen3_asr', 'fun_asr_nano', 'qwen_asr'},
+                 'sensevoice_onnx_provider': {'CPU', 'CUDA', 'DML', 'DirectML', 'TensorRT'},
+                 'fun_asr_onnx_provider': {'CPU', 'CUDA', 'DML', 'DirectML', 'TensorRT'},
+                 'qwen_asr_onnx_provider': {'CPU', 'CUDA', 'DML', 'DirectML', 'TensorRT'},
+                 'aligner_onnx_provider': {'CPU', 'CUDA', 'DML', 'DirectML', 'TensorRT'}}
+        import math
+        for key, value in configs.items():
+            if key in bools and not isinstance(value, bool):
+                raise ValueError(f'{key} 必须为布尔值。')
+            if key in numeric and (isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value < 0):
+                raise ValueError(f'{key} 必须为有效的非负数。')
+            if key in ('hot_thresh', 'hot_similar') and value > 1:
+                raise ValueError(f'{key} 必须在 0 到 1 之间。')
+            if key in ('file_seg_duration', 'mic_seg_duration') and value <= 0:
+                raise ValueError('分段长度必须大于零。')
+            if key in enums and (not isinstance(value, str) or value not in enums[key]):
+                raise ValueError(f'{key} 不是支持的选项。')
+            if key in ('shortcut', 'language') and (not isinstance(value, str) or len(value) > 128):
+                raise ValueError(f'{key} 必须为有效的短文本。')
+            if key == 'paste_apps' and (not isinstance(value, list) or not all(isinstance(v, str) for v in value)):
+                raise ValueError('paste_apps 必须为程序名列表。')
+            if key == 'enter_apps' and (not isinstance(value, list) or not all(
+                    isinstance(v, (list, tuple)) and len(v) == 2 and isinstance(v[0], str)
+                    and isinstance(v[1], (int, float)) and 0 <= v[1] <= 30 for v in value)):
+                raise ValueError('enter_apps 必须为程序名与延迟列表。')
+        for key in client_fields:
+            if key in configs:
+                put(CONFIG_CLIENT_PATH, aliases.get(key, key), configs[key], 'ClientConfig')
+        if 'shortcut' in configs or 'hold_mode' in configs:
+            tree = ast.parse(read(CONFIG_CLIENT_PATH))
+            cls = next(node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == 'ClientConfig')
+            assignment = next(node for node in cls.body if isinstance(node, ast.Assign)
+                              and any(isinstance(t, ast.Name) and t.id == 'shortcuts' for t in node.targets))
+            shortcuts = ast.literal_eval(assignment.value)
+            if not isinstance(shortcuts, list) or not shortcuts or not all(isinstance(item, dict) for item in shortcuts):
+                raise ValueError('现有快捷键配置不可安全修改。')
+            if 'shortcut' in configs:
+                shortcuts[0]['key'] = configs['shortcut']
+            if 'hold_mode' in configs:
+                for item in shortcuts:
+                    item['hold_mode'] = configs['hold_mode']
+            put(CONFIG_CLIENT_PATH, 'shortcuts', shortcuts, 'ClientConfig')
+        server_fields = {'model_type': 'model_type', 'format_num': 'format_num', 'format_spell': 'format_spell',
+                         'gpu_boost': 'gpu_boost_enabled', 'gpu_unboost_timeout': 'gpu_unboost_timeout',
+                         'aligner_timeout': 'aligner_idle_timeout'}
+        for key, name in server_fields.items():
+            if key in configs:
+                put(CONFIG_SERVER_PATH, name, configs[key], 'ServerConfig')
+        classes = {'sensevoice': 'SenseVoiceArgs', 'fun_asr': 'FunASRNanoGGUFArgs',
+                   'qwen_asr': 'Qwen3ASRGGUFArgs', 'aligner': 'ForceAlignerGGUFArgs'}
+        for prefix, cls in classes.items():
+            for suffix in ('onnx_provider', 'llm_use_gpu', 'dml_pad_to'):
+                key = f'{prefix}_{suffix}'
+                if key in configs:
+                    put(CONFIG_SERVER_PATH, suffix, configs[key], cls)
+        if 'gpu_boost_cmd' in configs or 'gpu_unboost_cmd' in configs:
+            warnings.append('普通备份不导入可执行 GPU 命令；本机已有命令保持不变。')
         if 'pill_overlay' in configs:
-            ConfigManager.set_pill_overlay_enabled(configs['pill_overlay'])
-
-        # 5. 还原 LLM 润色
+            content = PILL_CONFIG_PATH.read_text(encoding='utf-8') if PILL_CONFIG_PATH.exists() else 'enabled = True\n'
+            staged[PILL_CONFIG_PATH] = replace_assignment(content, 'enabled', configs['pill_overlay'])
         if 'llm_enabled' in configs:
-            ConfigManager.set_llm_enabled(configs['llm_enabled'])
+            put(LLM_DEFAULT_PATH, 'enabled', configs['llm_enabled'])
+            put(CONFIG_CLIENT_PATH, 'llm_enabled', configs['llm_enabled'], 'ClientConfig')
+            if configs['llm_enabled']:
+                warnings.append('备份会启用在线 AI；启用后识别文字可能发送给已配置的服务。')
         if 'llm_config' in configs:
-            llm_c = configs['llm_config']
-            ConfigManager.set_llm_default_config(
-                provider=llm_c.get('provider'),
-                api_key=None,
-                model=llm_c.get('model')
-            )
-            if llm_c.get('provider'):
-                set_llm_api_key(llm_c.get('provider'), '')
+            if not isinstance(configs['llm_config'], dict):
+                raise ValueError('llm_config 必须为对象。')
+            for key in ('provider', 'api_url', 'model', 'output_mode', 'profile_id'):
+                if key in configs['llm_config']:
+                    value = configs['llm_config'][key]
+                    if not isinstance(value, str):
+                        raise ValueError(f'AI 的 {key} 必须为文字。')
+                    put(LLM_DEFAULT_PATH, key, value)
         if 'llm_profiles' in configs:
-            ConfigManager.save_llm_profiles(configs['llm_profiles'])
-            for profile in configs['llm_profiles'].get('profiles', []):
-                if profile.get('id'):
-                    set_llm_profile_api_key(profile['id'], '')
-        if 'llm_roles' in data:
-            ConfigManager.import_llm_roles(data['llm_roles'])
+            profiles = configs['llm_profiles']
+            if not isinstance(profiles, dict) or not isinstance(profiles.get('profiles', []), list):
+                raise ValueError('AI 档案列表无效。')
+            seen = set()
+            for profile in profiles.get('profiles', []):
+                if not isinstance(profile, dict) or not isinstance(profile.get('id'), str) or profile['id'] in seen:
+                    raise ValueError('AI 档案 ID 无效或重复。')
+                seen.add(profile['id'])
+                if not isinstance(profile.get('models', []), list) or not all(isinstance(v, str) for v in profile.get('models', [])):
+                    raise ValueError('AI 档案模型列表无效。')
+            staged[LLM_PROFILES_PATH] = json.dumps(profiles, ensure_ascii=False, indent=2)
+        roles = data.get('llm_roles', [])
+        if not isinstance(roles, list):
+            raise ValueError('角色备份必须为列表。')
+        for role in roles:
+            if not isinstance(role, dict):
+                raise ValueError('角色备份格式无效。')
+            name = role.get('file', '')
+            if (not isinstance(name, str) or Path(name).name != name or '/' in name or '\\' in name
+                    or not name.endswith('.py') or name in {'__init__.py', 'default.py'} or '..' in name):
+                raise ValueError('角色文件名无效。')
+            content = role.get('content')
+            if not isinstance(content, str):
+                raise ValueError('角色内容必须为文字。')
+            staged[LLM_DIR / name] = safe_role(content)
+        for key, path in [('hot_words_content', HOT_TXT_PATH), ('hot_rules_content', HOT_RULE_TXT_PATH)]:
+            if key in data:
+                content = data[key]
+                if not isinstance(content, str):
+                    raise ValueError('热词内容必须为文字。')
+                if key == 'hot_rules_content':
+                    validate_rules(content)
+                staged[path] = content  # Explicit empty string intentionally clears after preview.
+        staged = {path: text for path, text in staged.items() if not path.exists() or path.read_text(encoding='utf-8') != text}
+        if any(path.is_symlink() or BASE_DIR.resolve() not in path.resolve().parents for path in staged):
+            raise ValueError('导入目标超出数据目录或属于链接。')
+        fingerprints = {str(path): fingerprint(path) for path in staged}
+        return data, staged, fingerprints, transaction_token(staged, fingerprints), warnings
 
-        # 6. 还原热词与正则文本
-        if 'hot_words_content' in data and data['hot_words_content']:
-            ConfigManager.write_text_with_backup(HOT_TXT_PATH, data['hot_words_content'])
-        if 'hot_rules_content' in data and data['hot_rules_content']:
-            ConfigManager.write_text_with_backup(HOT_RULE_TXT_PATH, data['hot_rules_content'])
+    @staticmethod
+    def preview_full_config(data) -> dict:
+        try:
+            data, staged, fingerprints, token, warnings = ConfigManager._prepare_import(data)
+            from core.product.data_safety import redact
+            current = redact(ConfigManager.get_all_config())
+            differences = [{'setting': key, 'before': current.get(key), 'after': value}
+                           for key, value in data['configs'].items() if current.get(key) != value]
+            return {'ok': True, 'changes': [str(path.relative_to(BASE_DIR)) for path in staged],
+                    'changed_settings': differences, 'warnings': warnings, 'token': token, 'data': data}
+        except (ValueError, TypeError, OSError, StopIteration, SyntaxError) as error:
+            return {'ok': False, 'message': str(error), 'changes': [], 'warnings': [], 'token': None}
 
-        return True, "配置导入解析成功，全量偏好与热词已成功恢复！"
+    @staticmethod
+    def import_full_config(data, expected_token: str | None = None):
+        from core.product.data_safety import commit_transaction
+        try:
+            _, staged, fingerprints, token, _ = ConfigManager._prepare_import(data)
+            if expected_token is not None and expected_token != token:
+                return False, '配置或备份内容已变化，请重新预览并确认。'
+            if not staged:
+                return True, '配置与当前一致，没有需要写入的变更。'
+            journal = commit_transaction(staged, CONFIG_BACKUP_DIR, fingerprints)
+            return True, f'配置已保存并读回核验；原配置备份保留在 {journal.name}。运行参数将在重启对应服务后生效。'
+        except Exception as error:
+            return False, str(error)
+
+    @staticmethod
+    def pending_config_recovery() -> list[dict]:
+        from core.product.data_safety import pending_imports
+        return pending_imports(CONFIG_BACKUP_DIR)
+
+    @staticmethod
+    def recover_config_import(journal: str | Path) -> tuple[bool, str]:
+        from core.product.data_safety import recover_transaction
+        try:
+            allowed = set(MANAGED_CONFIG_PATHS.values())
+            # A valid imported role may not yet have been created when interrupted.
+            manifest = json.loads((Path(journal) / 'manifest.json').read_text(encoding='utf-8'))
+            for item in manifest.get('files', []):
+                target = Path(item.get('path', ''))
+                if target.parent.resolve() == LLM_DIR.resolve() and target.suffix == '.py' and target.name not in {'__init__.py', 'default.py'}:
+                    allowed.add(target)
+            recover_transaction(Path(journal), CONFIG_BACKUP_DIR, allowed)
+            return True, '中断前的配置已恢复并校验；备份原字节仍保留。'
+        except Exception as error:
+            return False, str(error)
+
+    @staticmethod
+    def read_hotword_document(path: Path) -> dict:
+        from core.product.data_safety import fingerprint
+        path = Path(path)
+        if path.resolve() not in {HOT_TXT_PATH.resolve(), HOT_RULE_TXT_PATH.resolve()} or path.is_symlink():
+            raise ValueError('不是可编辑的热词文件。')
+        return {'text': path.read_text(encoding='utf-8') if path.exists() else '', 'sha256': fingerprint(path)}
+
+    @staticmethod
+    def save_hotword_document(path: Path, text: str, expected_sha256: str) -> tuple[bool, str]:
+        from core.product.data_safety import DATA_LOCK, fingerprint, validate_rules
+        try:
+            with DATA_LOCK:
+                current = ConfigManager.read_hotword_document(path)
+                if current['sha256'] != expected_sha256:
+                    return False, '文件已被外部修改，请先重新载入；编辑内容仍保留。'
+                if Path(path).resolve() == HOT_RULE_TXT_PATH.resolve():
+                    validate_rules(text)
+                ConfigManager.write_text_with_backup(Path(path), text)
+            return True, '已校验并保存。'
+        except (OSError, ValueError) as error:
+            return False, str(error)
 
     # --- 快捷键与触发模式 ---
     @staticmethod
@@ -782,10 +847,11 @@ class ConfigManager:
     @staticmethod
     def set_client_var(var_name, val):
         from config_client import ClientConfig as Config
-        setattr(Config, var_name, val)
         ok = ConfigManager._set_python_class_var(CONFIG_CLIENT_PATH, 'ClientConfig', var_name, val)
         if not ok:
             ok = ConfigManager._set_python_var(CONFIG_CLIENT_PATH, var_name, val)
+        if ok:
+            setattr(Config, var_name, val)
         return ok
 
     # --- 服务端变量读写助手 ---
@@ -848,24 +914,20 @@ class ConfigManager:
 
     @staticmethod
     def set_llm_default_config(provider=None, api_url=None, api_key=None, model=None, output_mode=None, profile_id=None):
-        if not LLM_DEFAULT_PATH.exists():
+        if not LLM_DEFAULT_PATH.is_file():
             return False
+        from core.product.data_safety import replace_assignment
         content = LLM_DEFAULT_PATH.read_text(encoding='utf-8')
-        if provider is not None:
-            content = re.sub(r"(^provider\s*=\s*')([^']*)(')", f"\\1{provider}\\3", content, flags=re.MULTILINE)
-        if api_url is not None:
-            content = re.sub(r"(^api_url\s*=\s*')([^']*)(')", f"\\1{api_url}\\3", content, flags=re.MULTILINE)
+        for name, value in {'provider': provider, 'api_url': api_url, 'model': model,
+                            'output_mode': output_mode, 'profile_id': profile_id}.items():
+            if value is not None:
+                content = replace_assignment(content, name, value)
+        if api_key is not None:
+            content = replace_assignment(content, 'api_key', '')
+        ConfigManager.write_text_with_backup(LLM_DEFAULT_PATH, content)
         if api_key is not None:
             active_provider = provider or ConfigManager.get_llm_default_config().get('provider', 'deepseek')
             set_llm_api_key(active_provider, api_key)
-            content = re.sub(r"(^api_key\s*=\s*')([^']*)(')", "\\1\\3", content, flags=re.MULTILINE)
-        if model is not None:
-            content = re.sub(r"(^model\s*=\s*')([^']*)(')", f"\\1{model}\\3", content, flags=re.MULTILINE)
-        if output_mode is not None:
-            content = re.sub(r"(^output_mode\s*=\s*')([^']*)(')", f"\\1{output_mode}\\3", content, flags=re.MULTILINE)
-        ConfigManager.write_text_with_backup(LLM_DEFAULT_PATH, content)
-        if profile_id is not None:
-            ConfigManager._set_python_var(LLM_DEFAULT_PATH, 'profile_id', profile_id)
         return True
 
     @staticmethod

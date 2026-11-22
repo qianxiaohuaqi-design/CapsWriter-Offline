@@ -9,9 +9,10 @@ from __future__ import annotations
 
 import time
 import asyncio
-import shutil
+import uuid
+import json
+import math
 from dataclasses import dataclass, field
-from datetime import datetime
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -20,7 +21,8 @@ from config_client import ClientConfig as Config
 
 
 ProgressCallback = Callable[[dict], None]
-BASE_DIR = Path(__file__).resolve().parent.parent
+from core.product.paths import data_root
+BASE_DIR = data_root()
 OUTPUT_DIR = BASE_DIR / 'web_gui' / 'outputs'
 
 
@@ -53,15 +55,16 @@ class ControlCenterTranscriptionApp:
         )
 
 
-def _collect_output_files(file: Path) -> dict[str, Path]:
+def _collect_output_files(file: Path, options: dict | None = None) -> dict[str, Path]:
+    options = options or {}
     candidates = {}
-    if Config.file_save_srt:
+    if options.get('file_save_srt', Config.file_save_srt):
         candidates['srt'] = file.with_suffix('.srt')
-    if Config.file_save_txt:
+    if options.get('file_save_txt', Config.file_save_txt):
         candidates['txt'] = file.with_suffix('.txt')
-    if Config.file_save_json:
+    if options.get('file_save_json', Config.file_save_json):
         candidates['json'] = file.with_suffix('.json')
-    if Config.file_save_merge:
+    if options.get('file_save_merge', Config.file_save_merge):
         candidates['merge'] = file.with_suffix('.merge.txt')
     return {kind: path for kind, path in candidates.items() if path.exists()}
 
@@ -90,28 +93,35 @@ def regenerate_srt_from_txt(txt_file: Path) -> tuple[bool, str, Optional[Path]]:
     if not json_file.exists():
         return False, f'缺少同名 JSON 时间戳文件：{json_file.name}', None
     try:
-        srt_from_txt.one_task(txt_file)
-        srt_file = txt_file.with_suffix('.srt')
-        return True, f'已根据 {txt_file.name} 重新生成 SRT。', srt_file
+        raw = json.loads(json_file.read_text(encoding='utf-8'))
+        timestamps, tokens = raw.get('timestamps', []), raw.get('tokens', [])
+        valid = (isinstance(timestamps, list) and isinstance(tokens, list) and bool(tokens)
+                 and len(tokens) == len(timestamps) and all(isinstance(token, str) for token in tokens)
+                 and all(isinstance(value, (int, float)) and math.isfinite(value) and value >= 0 for value in timestamps)
+                 and all(a <= b for a, b in zip(timestamps, timestamps[1:])))
+        if not valid:
+            return False, '此结果缺少可用时间戳，不能生成 SRT；原 TXT/JSON 保持不变。', None
+        words = srt_from_txt.get_words(json_file)
+        if not words:
+            return False, '此结果缺少可用时间戳，不能生成 SRT；原 TXT/JSON 保持不变。', None
+        # New filename preserves an older subtitle, including files outside our data directory.
+        srt_file = txt_file.with_name(f'{txt_file.stem}.rebuilt-{uuid.uuid4().hex[:10]}.srt')
+        if srt_file.exists() or srt_file.is_symlink():
+            return False, '目标路径已存在，请重试。', None
+        import srt
+        lines = [line.rstrip('，。？！,.?!\r\n ') for line in srt_from_txt.get_lines(txt_file)]
+        content = srt.compose(srt_from_txt.lines_match_words(lines, words))
+        with srt_file.open('x', encoding='utf-8') as stream:
+            stream.write(content)
+        return True, f'已生成新的 SRT：{srt_file.name}，原字幕保留。', srt_file
     except Exception as e:
         return False, f'重新生成 SRT 失败：{e}', None
 
 
-def _move_output_files_to_task_dir(file: Path, outputs: dict[str, Path]) -> tuple[Path, dict[str, Path]]:
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    safe_stem = ''.join(ch if ch.isalnum() or ch in ('-', '_') else '_' for ch in file.stem).strip('_') or 'transcription'
-    task_dir = OUTPUT_DIR / f'{safe_stem}_{timestamp}'
-    task_dir.mkdir(parents=True, exist_ok=True)
 
-    moved: dict[str, Path] = {}
-    for kind, path in outputs.items():
-        target = task_dir / path.name
-        shutil.move(str(path), str(target))
-        moved[kind] = target
-    return task_dir, moved
-
-
-async def transcribe_file(file: Path, progress: Optional[ProgressCallback] = None) -> TranscriptionResult:
+async def transcribe_file(file: Path, progress: Optional[ProgressCallback] = None, *,
+                          output_dir: Path | None = None, options: dict | None = None,
+                          cancel_requested: Callable[[], bool] | None = None) -> TranscriptionResult:
     """
     转写单个音视频文件。
 
@@ -126,11 +136,20 @@ async def transcribe_file(file: Path, progress: Optional[ProgressCallback] = Non
             progress({'phase': phase, 'percent': max(0, min(100, percent)), 'detail': detail})
 
     from core.client.transcribe.file_transcriber import FileTranscriber
+    from core.client.transcribe.result_handler import ResultHandler
     from core.client.transcribe.media_tool import MediaTool
 
     file = Path(file).expanduser().resolve()
+    options = options or {}
+    cancelled = cancel_requested or (lambda: False)
+    if cancelled():
+        return TranscriptionResult(False, '任务已安全停止。', file)
+    if output_dir is None:
+        output_dir = OUTPUT_DIR / uuid.uuid4().hex
+        output_dir.mkdir(parents=True, exist_ok=False)
+        (output_dir / '.capswriter-output.json').write_text(json.dumps({'kind': 'transcription'}), encoding='utf-8')
     app = ControlCenterTranscriptionApp()
-    transcriber = FileTranscriber(app, file)
+    transcriber = FileTranscriber(app, file, options=options)
 
     emit('checking', 2, '正在检查文件、FFmpeg 与 ASR 服务连接...')
     if not file.exists():
@@ -165,6 +184,9 @@ async def transcribe_file(file: Path, progress: Optional[ProgressCallback] = Non
         if message is None:
             return TranscriptionResult(False, '未收到最终识别结果。', file)
 
+        if cancelled():
+            return TranscriptionResult(False, '任务已安全停止；未写入本次结果。', file)
+
         emit('saving', 92, '正在应用热词并保存字幕文件...')
         transcriber._apply_hotwords(message)
         if not (message.text or message.text_accu or message.tokens):
@@ -173,21 +195,24 @@ async def transcribe_file(file: Path, progress: Optional[ProgressCallback] = Non
                 '未从该文件中提取到可识别音频，或音轨为空。',
                 file,
             )
-        text_display = ResultHandler.save_results(file, message)
-        outputs = _collect_output_files(file)
-        output_dir, outputs = _move_output_files_to_task_dir(file, outputs)
+        text_display = ResultHandler.save_results(file, message, output_dir=output_dir, options=options)
+        outputs = _collect_output_files(output_dir / file.name, options)
+        detail = '转写完成'
+        if options.get('file_save_srt', Config.file_save_srt) and 'srt' not in outputs:
+            detail += '；此模型未提供可用时间戳，已保存文本，未生成 SRT'
+
 
         emit('done', 100, '转写完成。')
         return TranscriptionResult(
             True,
-            '转写完成',
+            detail,
             input_file=file,
             output_dir=output_dir,
             output_files=outputs,
             text=text_display,
         )
     except asyncio.CancelledError:
-        emit('error', 0, '转写任务已取消。')
+        emit('error', 0, '本地连接已停止；服务端推理状态需重新核验。')
         raise
     except Exception as e:
         emit('error', 100, f'转写失败: {e}')
@@ -206,6 +231,8 @@ async def _receive_with_progress(transcriber: FileTranscriber, emit) -> Optional
         msg = await transcriber._ws_manager.receive()
         if not msg:
             return None
+        if getattr(msg, 'task_id', None) != transcriber.task_id:
+            continue
 
         if transcriber._audio_duration > 0:
             percent = 35 + (msg.duration / transcriber._audio_duration) * 55

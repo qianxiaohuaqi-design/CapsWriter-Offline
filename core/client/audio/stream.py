@@ -142,8 +142,7 @@ class AudioStreamManager:
             logger.warning("无法获取音频设备名称（编码问题）")
         except sd.PortAudioError:
             logger.error("未找到麦克风设备")
-            input('按回车键退出')
-            sys.exit(1)
+            return None
 
         # 创建音频流
         try:

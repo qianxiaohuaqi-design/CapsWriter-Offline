@@ -73,6 +73,31 @@ class ShortcutTask:
 
     def launch(self) -> None:
         """启动录音任务"""
+        from core.product.status import read_status
+        server = read_status('server')
+        inference = read_status('inference')
+        message = ''
+        if not server.get('ready'):
+            message = '模型尚未就绪，请在控制中心检查。'
+        elif inference.get('state') == 'busy' and inference.get('task_type') == 'file':
+            message = '正在处理文件片段，请稍后听写，或在任务列表安全停止转写。'
+        elif not self.state.stream or not self.state.stream.active:
+            message = '麦克风不可用，请检查输入设备和权限。'
+        if message:
+            logger.warning(message)
+            try:
+                from core.ui.toast import toast
+                toast(message, duration=4500, bg='#fff7ed', fg='#9a3412')
+            except Exception:
+                try:
+                    overlay = self._get_pill_overlay()
+                    if overlay:
+                        overlay.show_processing(message)
+                except Exception:
+                    pass
+            return
+        from core.product.focus import capture_input_target
+        self.state.pending_input_target = capture_input_target()
         logger.info(f"[{self.shortcut.key}] 触发：开始录音")
 
         # 记录开始时间
@@ -108,7 +133,8 @@ class ShortcutTask:
         self._status.stop()
         self._hide_pill()
 
-        self.task.cancel()
+        if self.task:
+            self.task.cancel()
         self.task = None
 
     def finish(self) -> None:

@@ -1,6 +1,8 @@
 # coding: utf-8
 import re
 import json
+import math
+import uuid
 from pathlib import Path
 from typing import Dict, Any
 
@@ -51,74 +53,60 @@ class ResultHandler:
         return "\n".join(lines)
 
     @classmethod
-    def save_results(cls, file: Path, message: RecognitionMessage) -> str:
+    def save_results(cls, file: Path, message: RecognitionMessage, *, output_dir: Path | None = None,
+                     options: dict | None = None) -> str:
+        """Write only into a dedicated attempt folder, never beside source media.
+
+        Existing results are never removed when a format is disabled. A missing
+        timestamp stream permits TXT/JSON and truthfully omits SRT.
         """
-        保存转录结果到文件
-        
-        Returns:
-            split_text: 切分后的文本（用于显示）
-        """
+        from core.product.paths import data_root
+        import srt
+        file = Path(file)
+        if output_dir is None:
+            output_dir = data_root() / 'web_gui' / 'outputs' / uuid.uuid4().hex
+            output_dir.mkdir(parents=True, exist_ok=False)
+            (output_dir / '.capswriter-output.json').write_text(
+                json.dumps({'kind': 'transcription'}), encoding='utf-8')
+        output_dir = Path(output_dir)
+        if output_dir.is_symlink():
+            raise ValueError('转写输出目录不能是链接。')
+        output_dir.mkdir(parents=True, exist_ok=True)
+        destination = output_dir / file.name
+        opts = options or {}
+        enabled = lambda name: bool(opts.get(name, getattr(Config, name)))
         text_display = message.text
-        text_accu = message.text_accu if message.text_accu else message.text
+        text_accu = message.text_accu or message.text
         text_split = cls.smart_split(text_accu)
-        timestamps = message.timestamps
-        tokens = message.tokens
-        
-        # 文件名
-        json_filename = file.with_suffix('.json')
-        txt_filename = file.with_suffix('.txt')
-        srt_filename = file.with_suffix('.srt')
-        merge_filename = file.with_suffix('.merge.txt')
-        
-        # 1. 保存 merge.txt
-        if Config.file_save_merge:
-            with open(merge_filename, 'w', encoding='utf-8') as f:
-                f.write(text_accu)
-            logger.debug(f"保存合并文本: {merge_filename}")
-
-        # 2. 保存 txt
-        if Config.file_save_txt:
-            with open(txt_filename, 'w', encoding='utf-8') as f:
-                f.write(text_split)
-            logger.debug(f"保存切分文本: {txt_filename}")
-
-        # 3. 保存 json
-        if Config.file_save_json:
-            with open(json_filename, 'w', encoding='utf-8') as f:
-                json.dump({'timestamps': timestamps, 'tokens': tokens}, f, ensure_ascii=False)
-            logger.debug(f"保存 JSON 结果: {json_filename}")
-        
-        # 4. 生成 srt
-        if Config.file_save_srt:
-            # 构建 words 信息（无需依赖 json 文件）
-            words = [{'word': token.replace('@', ''), 'start': timestamp, 'end': timestamp + 0.2} 
-                     for (timestamp, token) in zip(timestamps, tokens)]
-            for i in range(len(words) - 1):
-                words[i]['end'] = min(words[i]['end'], words[i+1]['start'])
-            
-            text_lines = text_split.splitlines()
-            srt_from_txt.generate_srt_file(words, text_lines, srt_filename)
-        
-        # 5. 清理中间生成的 txt
-        if not Config.file_save_txt and txt_filename.exists():
-            try:
-                txt_filename.unlink()
-                logger.debug(f"清理中间 TXT 文件: {txt_filename}")
-            except Exception as e:
-                logger.warning(f"清理中间 TXT 文件失败: {e}")
-                
-        cleanup_targets = [
-            (not Config.file_save_srt, srt_filename, 'SRT'),
-            (not Config.file_save_txt, txt_filename, 'TXT'),
-            (not Config.file_save_json, json_filename, 'JSON'),
-            (not Config.file_save_merge, merge_filename, 'MERGE'),
-        ]
-        for should_remove, path, label in cleanup_targets:
-            if should_remove and path.exists():
-                try:
-                    path.unlink()
-                    logger.debug(f"Clean disabled {label} output file: {path}")
-                except Exception as e:
-                    logger.warning(f"Failed to clean disabled {label} output file: {e}")
-
+        timestamps = message.timestamps or []
+        tokens = message.tokens or []
+        valid_times = (bool(tokens) and all(isinstance(token, str) for token in tokens) and len(tokens) == len(timestamps)
+                       and all(isinstance(t, (int, float)) and math.isfinite(t) and t >= 0 for t in timestamps)
+                       and all(a <= b for a, b in zip(timestamps, timestamps[1:])))
+        payloads = {}
+        if enabled('file_save_merge'):
+            payloads[destination.with_suffix('.merge.txt')] = text_accu
+        if enabled('file_save_txt'):
+            payloads[destination.with_suffix('.txt')] = text_split
+        if enabled('file_save_json'):
+            payloads[destination.with_suffix('.json')] = json.dumps(
+                {'timestamps': timestamps if valid_times else [], 'tokens': [str(token) for token in tokens],
+                 'timestamps_available': valid_times}, ensure_ascii=False, allow_nan=False)
+        if enabled('file_save_srt') and valid_times:
+            words = [{'word': str(token).replace('@', ''), 'start': timestamp, 'end': timestamp + 0.2}
+                     for timestamp, token in zip(timestamps, tokens)]
+            for index in range(len(words) - 1):
+                words[index]['end'] = min(words[index]['end'], words[index + 1]['start'])
+            lines = [line.rstrip('，。？！,.?!\r\n ') for line in text_split.splitlines()]
+            payloads[destination.with_suffix('.srt')] = srt.compose(srt_from_txt.lines_match_words(lines, words))
+        if not payloads:
+            raise ValueError('没有可保存的结果格式；无时间戳时请启用 TXT 或 JSON。')
+        for target in payloads:
+            if target.exists() or target.is_symlink():
+                raise FileExistsError(f'已有结果受到保护，不能覆盖：{target.name}')
+        for target, content in payloads.items():
+            # Exclusive creation also protects against a late competing writer.
+            with target.open('x', encoding='utf-8') as stream:
+                stream.write(content)
+        logger.debug(f'结果已保存到独立目录: {output_dir}')
         return text_display

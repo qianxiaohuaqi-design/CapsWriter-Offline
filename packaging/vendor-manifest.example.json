@@ -1,0 +1,5 @@
+{
+  "schema": "capswriter.reviewed-vendors.v1",
+  "notes": "Copy to a local file outside Git and populate only after reviewing actual FFmpeg/llama.cpp bytes, ABI and licenses. Empty example intentionally cannot produce a full release.",
+  "files": []
+}

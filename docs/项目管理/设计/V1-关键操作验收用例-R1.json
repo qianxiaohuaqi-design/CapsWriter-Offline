@@ -1,14 +1,15 @@
 {
   "schema": "capswriter.v1.interaction-acceptance.draft-r1",
   "version": 1,
-  "status": "design_only_not_approved",
+  "status": "approved_frozen_design_spec_not_execution_evidence",
   "source_commit": "2144d431e0a17bb27b04dcc0e9fd02e2e2379764",
   "notes": [
     "Semantic acceptance records only; not Python API contract.",
     "Read local Codex M1-A before implementing.",
     "No network, filesystem, OS or Git operations triggered by these records.",
     "2026-11-02 design maintenance: four source-informed test cases added, not executed.",
-    "2026-11-21 design maintenance: retain 30 main cases; add explicit subcases and contract coverage only. No Windows acceptance has run. Pending scope/background choices remain in the R2 confirmation candidate."
+    "2026-11-21 design maintenance: retain 30 main cases; add explicit subcases and contract coverage only. No Windows acceptance has run. Pending scope/background choices remain in the R2 confirmation candidate.",
+    "2026-11-22 approved freeze: keep the original schema/version, 30 main IDs and tiers; clarify first-setup and background-download preconditions; add six frozen boundary groups. Earlier pending-approval notes above are historical. No case execution result is assigned here."
   ],
   "universal_invariants": [
     "no_fake_ready_from_port_or_pid",
@@ -18,7 +19,15 @@
     "download_verified_is_not_worker_ready",
     "no_automatic_second_model_switch",
     "no_wrong_window_text_injection",
-    "preserve_existing_ui_and_functions"
+    "preserve_existing_ui_and_functions",
+    "setup_intent_independent_of_runtime_readiness",
+    "established_default_model_never_replaced_by_download_completion",
+    "file_inference_contention_has_truthful_busy_or_safe_boundary_behavior",
+    "retry_preserves_source_model_parameters_and_distinct_attempt_identity",
+    "gui_reconnects_existing_background_owner_before_orphan_recovery",
+    "window_close_and_full_application_exit_have_different_task_semantics",
+    "packaged_windows_evidence_is_not_inferred_from_source_or_linux_checks",
+    "one_authoritative_frozen_handoff_preserves_unsynchronized_local_work"
   ],
   "cases": [
     {
@@ -26,7 +35,8 @@
       "area": "first_run",
       "action": "no_model_launch",
       "pre": [
-        "gui_startable"
+        "gui_startable",
+        "first_setup_not_started_and_no_established_default_choice"
       ],
       "positive": [
         "show_wizard",
@@ -59,6 +69,15 @@
             "do_not_claim_test_passed",
             "unavailable_device_does_not_claim_dictation_available"
           ]
+        },
+        {
+          "name": "established_model_loading_or_unavailable",
+          "expect": [
+            "preserve_setup_status_and_default_choice_independently_of_worker_ready",
+            "loading_opens_regular_gui_with_loading_state",
+            "missing_or_failed_existing_model_opens_repair_or_retry_path_without_forced_first_run",
+            "existing_custom_model_paths_and_acceleration_choices_preserved"
+          ]
         }
       ]
     },
@@ -83,7 +102,19 @@
       "protect": [
         "old_configuration"
       ],
-      "tier": "C0"
+      "tier": "C0",
+      "subcases": [
+        {
+          "name": "skipped_setup_reopens_from_regular_gui",
+          "expect": [
+            "skipped_or_interrupted_setup_exposes_continue_setup_entry",
+            "restore_saved_step_then_revalidate_actual_state",
+            "hardware_detection_and_verified_install_steps_do_not_require_redundant_decisions",
+            "microphone_test_is_explicit_optional_and_never_falsely_recorded_as_passed",
+            "hotkey_prefills_existing_setting_and_completion_explains_how_to_start_dictation"
+          ]
+        }
+      ]
     },
     {
       "id": "MD-01",
@@ -125,6 +156,14 @@
           "expect": [
             "conservative_manual_selection_available",
             "no_unverified_performance_promise"
+          ]
+        },
+        {
+          "name": "download_confirmation_and_parallel_active_model_status",
+          "expect": [
+            "show_verified_download_size_required_space_and_destination_before_confirmation",
+            "show_model_source_license_and_variant_before_network_transfer",
+            "existing_model_a_readiness_and_model_b_download_progress_are_displayed_separately"
           ]
         }
       ]
@@ -190,8 +229,9 @@
       "area": "model",
       "action": "activate_first_model",
       "pre": [
-        "no_active_model",
-        "installed_verified"
+        "no_established_default_model",
+        "explicit_first_setup_candidate_matches_target",
+        "installed_files_checked_with_truthful_integrity_status"
       ],
       "positive": [
         "worker_ready_then_active"
@@ -205,14 +245,25 @@
       "protect": [
         "old_configuration"
       ],
-      "tier": "C0"
+      "tier": "C0",
+      "subcases": [
+        {
+          "name": "first_candidate_is_explicit_setup_intent",
+          "expect": [
+            "download_completion_alone_does_not_create_a_default_model",
+            "only_the_explicit_first_setup_candidate_may_auto_activate",
+            "commit_default_choice_only_after_current_target_worker_is_proven_ready",
+            "manual_offline_import_remains_unverified_unless_a_real_integrity_check_exists"
+          ]
+        }
+      ]
     },
     {
       "id": "MD-05",
       "area": "model",
       "action": "switch_active_model",
       "pre": [
-        "target_verified",
+        "target_files_checked_and_integrity_status_disclosed",
         "no_unconfirmed_active_task",
         "user_explicitly_confirmed_switch"
       ],
@@ -246,6 +297,23 @@
             "active_model_changes_only_after_current_target_worker_ready",
             "failed_switch_restores_old_worker_or_reports_recovery_failure"
           ]
+        },
+        {
+          "name": "old_model_fails_while_second_model_finishes_download",
+          "expect": [
+            "retain_established_default_a_even_if_worker_a_is_not_ready",
+            "model_b_remains_installed_only_until_explicit_switch_confirmation",
+            "runtime_failure_does_not_reset_first_setup_intent"
+          ]
+        },
+        {
+          "name": "legacy_model_switch_rollback_and_interrupted_commit",
+          "expect": [
+            "preserve_original_custom_per_file_paths_and_gpu_preferences",
+            "failed_switch_restores_original_configuration_or_reports_recovery_failure",
+            "pending_switch_journal_blocks_asr_even_if_selection_record_does_not_yet_exist",
+            "gui_remains_available_for_recovery_when_selected_model_or_selection_record_is_invalid"
+          ]
         }
       ]
     },
@@ -271,7 +339,18 @@
         "target_window",
         "existing_clipboard"
       ],
-      "tier": "C0"
+      "tier": "C0",
+      "subcases": [
+        {
+          "name": "file_inference_busy_when_dictation_hotkey_pressed",
+          "expect": [
+            "queued_file_does_not_start_ahead_of_an_already_recording_dictation_turn",
+            "running_file_inference_yields_only_at_a_proven_safe_boundary",
+            "noninterruptible_current_inference_shows_busy_or_waiting_and_a_recoverable_next_action",
+            "no_fake_recording_no_silent_hotkey_loss_and_no_unverified_instant_preemption_promise"
+          ]
+        }
+      ]
     },
     {
       "id": "DI-02",
@@ -385,7 +464,17 @@
         "source_media",
         "existing_subtitles"
       ],
-      "tier": "C0"
+      "tier": "C0",
+      "subcases": [
+        {
+          "name": "file_queue_and_dictation_share_actual_engine_state",
+          "expect": [
+            "new_file_start_observes_actual_dictation_recording_and_model_switch_state",
+            "each_started_task_records_original_model_parameters_and_source_identity",
+            "distinct_tasks_and_attempts_keep_independent_output_directories"
+          ]
+        }
+      ]
     },
     {
       "id": "FT-02",
@@ -407,7 +496,17 @@
         "source_media",
         "other_tasks"
       ],
-      "tier": "C0"
+      "tier": "C0",
+      "subcases": [
+        {
+          "name": "cancel_during_noninterruptible_file_inference",
+          "expect": [
+            "remain_cancelling_until_worker_or_process_acknowledges_safe_stop",
+            "safe_stop_does_not_kill_unknown_processes_or_delete_completed_outputs",
+            "late_cancel_or_progress_event_cannot_replace_a_new_attempt_state"
+          ]
+        }
+      ]
     },
     {
       "id": "FT-03",
@@ -438,6 +537,26 @@
             "completed_outputs_preserved",
             "selected_file_retry_starts_from_beginning",
             "no_claim_of_precise_audio_offset_resume"
+          ]
+        },
+        {
+          "name": "retry_retains_original_source_model_and_parameters",
+          "expect": [
+            "retry_uses_original_model_and_parameters_by_default",
+            "unavailable_original_model_requires_user_review_instead_of_silent_substitution",
+            "moved_or_changed_source_requires_review_before_retry",
+            "selected_file_restarts_from_beginning_without_claiming_exact_audio_resume"
+          ]
+        },
+        {
+          "name": "attempt_identity_and_live_background_reconnection",
+          "expect": [
+            "stable_task_id_and_distinct_attempt_id_for_each_retry",
+            "duplicate_retry_clicks_do_not_create_concurrent_duplicate_attempts",
+            "late_events_from_old_attempt_do_not_overwrite_current_state",
+            "new_attempt_updates_result_pointer_only_after_verified_success",
+            "reopened_gui_reattaches_live_owned_task_before_marking_any_record_interrupted",
+            "only_records_without_a_live_owned_task_are_recovered_as_interrupted"
           ]
         }
       ]
@@ -612,10 +731,12 @@
         "background_ownership_checked"
       ],
       "positive": [
-        "tray_running_or_explicit_safe_exit"
+        "model_download_continues_while_application_background_runs",
+        "reopened_gui_reconnects_same_background_owner_and_download_id"
       ],
       "negative": [
-        "warn_if_background_not_guaranteed"
+        "warn_and_offer_wait_or_safe_stop_if_transcription_background_not_guaranteed",
+        "safe_exit_fallback_does_not_count_as_success_for_required_background_model_download"
       ],
       "cancel": [
         "stay_in_gui"
@@ -624,7 +745,26 @@
         "running_transcription",
         "downloads"
       ],
-      "tier": "C0"
+      "tier": "C0",
+      "subcases": [
+        {
+          "name": "first_window_close_and_reopen_entry",
+          "expect": [
+            "first_close_explains_background_tray_and_reopen_entry_once",
+            "later_safe_window_closes_do_not_repeat_the_same_notice",
+            "shortcut_or_tray_reopens_existing_owned_instance_without_duplicate_gui_or_download",
+            "tray_failure_keeps_a_visible_or_reachable_control_entry"
+          ]
+        },
+        {
+          "name": "download_progress_after_window_close",
+          "expect": [
+            "verify_actual_download_bytes_advance_after_gui_window_closes_under_controlled_network_conditions",
+            "same_download_id_and_stage_recovered_when_gui_reopens",
+            "tray_icon_or_open_port_alone_is_not_background_download_evidence"
+          ]
+        }
+      ]
     },
     {
       "id": "SV-03",
@@ -647,7 +787,18 @@
         "user_data",
         "unrelated_processes"
       ],
-      "tier": "C0"
+      "tier": "C0",
+      "subcases": [
+        {
+          "name": "complete_exit_is_not_window_close",
+          "expect": [
+            "pause_download_durably_and_wait_for_actual_stop_acknowledgement",
+            "file_task_waits_for_safe_boundary_or_confirmed_safe_stop",
+            "next_launch_recovers_saved_tasks_and_revalidates_download_identity_before_resume",
+            "do_not_promise_download_continuation_after_full_exit_or_shutdown"
+          ]
+        }
+      ]
     },
     {
       "id": "UP-01",
@@ -695,7 +846,29 @@
         "models",
         "license_files"
       ],
-      "tier": "C0"
+      "tier": "C0",
+      "subcases": [
+        {
+          "name": "early_minimal_packaging_before_full_distribution",
+          "expect": [
+            "perform_minimal_packaged_startup_resource_data_and_background_ownership_checks_in_b1_b2",
+            "use_a_short_known_audio_sample_to_check_real_model_loading_in_packaged_runtime_when_available",
+            "retain_full_installer_portable_upgrade_and_uninstall_checks_in_b4",
+            "record_unavailable_windows_checks_as_not_run_in_separate_receipt"
+          ]
+        },
+        {
+          "name": "single_frozen_handoff_and_local_baseline_protection",
+          "expect": [
+            "start_from_current_handoff_then_frozen_design_package_and_evidence_index",
+            "bind_handoff_to_exact_development_branch_and_code_commit",
+            "protect_local_e7cc1e2_and_all_original_uncommitted_work_before_fetch_integration",
+            "use_isolated_worktree_and_compare_existing_m1a_semantics_before_merging",
+            "read_stage_specific_details_as_needed_without_reissuing_seven_design_batches",
+            "selected_basic_c1_items_remain_required_deliverables_not_silently_optional"
+          ]
+        }
+      ]
     },
     {
       "id": "UP-03",
@@ -744,7 +917,18 @@
       "protect": [
         "private_artifacts"
       ],
-      "tier": "C0"
+      "tier": "C0",
+      "subcases": [
+        {
+          "name": "technical_site_and_public_distribution_evidence_are_separate",
+          "expect": [
+            "g7_t_checks_static_source_real_product_images_and_real_build_metadata",
+            "g7_p_requires_explicit_publication_authorization_and_verified_public_artifact_links",
+            "unpublished_or_unverified_download_buttons_remain_disabled",
+            "do_not_claim_all_public_release_gates_passed_from_source_or_local_site_alone"
+          ]
+        }
+      ]
     },
     {
       "id": "WF-03",
@@ -769,7 +953,18 @@
         "history",
         "configuration"
       ],
-      "tier": "C0"
+      "tier": "C0",
+      "subcases": [
+        {
+          "name": "early_packaged_no_model_and_repair_entry",
+          "expect": [
+            "minimal_packaged_windows_app_opens_regular_gui_or_first_setup_without_model_weights",
+            "resource_paths_and_writable_data_paths_are_valid_in_the_packaged_runtime",
+            "failed_or_missing_selected_model_does_not_prevent_gui_and_diagnostics_access",
+            "source_mode_or_linux_smoke_result_does_not_replace_packaged_windows_evidence"
+          ]
+        }
+      ]
     },
     {
       "id": "SV-04",
@@ -816,7 +1011,17 @@
         "old_json",
         "old_srt"
       ],
-      "tier": "C0"
+      "tier": "C0",
+      "subcases": [
+        {
+          "name": "retry_output_collision_protection",
+          "expect": [
+            "source_media_and_source_side_txt_json_srt_hashes_unchanged_after_success_failure_or_cancel",
+            "each_attempt_uses_distinct_owned_output_directory",
+            "previous_completed_output_hashes_and_result_pointer_preserved_until_new_success"
+          ]
+        }
+      ]
     },
     {
       "id": "CF-04",
@@ -900,6 +1105,73 @@
       ],
       "requirement": "Dedicated model removal is not a mandatory new V1 feature; if offered, only confirmed owned non-active paths may be removed.",
       "applicability": "only_if_model_removal_ui_is_in_scope"
+    }
+  ],
+  "approval": {
+    "approved_on": "2026-11-22",
+    "timezone": "America/Los_Angeles",
+    "basis": "User explicitly approved R2 plus the six optimization decisions and authorized design, source implementation and development-branch upload.",
+    "freeze_document": "V1-设计冻结与实施总包-20261122.md",
+    "initial_approval_record_commit": "621e2cc8ecb92064e126a135d4e09b4a75087c90",
+    "design_source_snapshot_commit": "feb3945a909346ff90d42deed50cb31516922664",
+    "boundary_supplement": "V1-验收边界补充-20261122.md",
+    "scope": "All existing C0 and the selected basic C1 items are required V1 deliverables; original tiers retain scheduling priority only.",
+    "execution_evidence": "Separate receipts must bind code SHA, environment, command and observed result. Approval is not a test result."
+  },
+  "frozen_boundary_coverage": [
+    {
+      "name": "setup_intent_and_model_activation",
+      "freeze_section": "3.1",
+      "case_ids": [
+        "WF-01",
+        "WF-02",
+        "MD-04",
+        "MD-05",
+        "WF-03"
+      ]
+    },
+    {
+      "name": "dictation_and_file_inference_scheduling",
+      "freeze_section": "3.2",
+      "case_ids": [
+        "DI-01",
+        "FT-01",
+        "FT-02"
+      ]
+    },
+    {
+      "name": "retry_attempts_and_recovery",
+      "freeze_section": "3.3",
+      "case_ids": [
+        "FT-01",
+        "FT-03",
+        "FT-05"
+      ]
+    },
+    {
+      "name": "wizard_and_background_discoverability",
+      "freeze_section": "3.4",
+      "case_ids": [
+        "WF-02",
+        "MD-01",
+        "SV-02",
+        "SV-03"
+      ]
+    },
+    {
+      "name": "early_packaged_runtime_validation",
+      "freeze_section": "3.5",
+      "case_ids": [
+        "WF-03",
+        "UP-02"
+      ]
+    },
+    {
+      "name": "single_handoff_and_stage_scoped_reading",
+      "freeze_section": "3.6",
+      "case_ids": [
+        "UP-02"
+      ]
     }
   ]
 }

@@ -18,7 +18,8 @@ from uuid import uuid4
 from . import logger
 from config_client import ClientConfig as Config
 
-BASE_DIR = Path(__file__).resolve().parents[3]
+from core.product.paths import data_root
+BASE_DIR = data_root()
 HISTORY_PATH = BASE_DIR / 'web_gui' / 'input_history.jsonl'
 CLEAR_MARKER_PATH = BASE_DIR / 'web_gui' / 'input_history_cleared_at.txt'
 DEFAULT_MAX_ITEMS = 200

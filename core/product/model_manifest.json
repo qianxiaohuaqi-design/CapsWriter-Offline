@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "verified_date": "2026-11-22",
+  "models": [
+    {
+      "id": "sensevoice-small-fp16",
+      "name": "SenseVoice Small · FP16 ONNX",
+      "engine": "sensevoice",
+      "recommended": true,
+      "description": "支持中文、粤语、英语、日语、韩语；保留现有热词和时间戳能力。",
+      "download_enabled": true,
+      "url": "https://github.com/HaujetZhao/CapsWriter-Offline/releases/download/models/Sensevoice-Small-ONNX.zip",
+      "source_page": "https://github.com/HaujetZhao/CapsWriter-Offline/releases/tag/models",
+      "source_metadata": "https://api.github.com/repos/HaujetZhao/CapsWriter-Offline/releases/tags/models",
+      "size_bytes": 433798984,
+      "sha256": "3948b5761f12db1c01d7a7e596294b43b0316aa5c7a8df77981e78573997dcbb",
+      "sha256_source": "GitHub release asset digest",
+      "max_unpacked_bytes": 1073741824,
+      "archive_root": "Sensevoice-Small-ONNX",
+      "legacy_directory": "SenseVoice-Small/Sensevoice-Small-ONNX",
+      "required_files": ["SenseVoice-Encoder.fp16.onnx", "SenseVoice-CTC.fp16.onnx", "tokenizer.bpe.model"],
+      "license": "FunASR Model Open Source License Agreement v1.1 (model weights and derivatives)",
+      "license_url": "https://github.com/modelscope/FunASR/blob/58830eca4012644aac0c3218c3ccc7d98f003fda/MODEL_LICENSE",
+      "original_model": "https://huggingface.co/FunAudioLLM/SenseVoiceSmall",
+      "conversion_source": "https://github.com/HaujetZhao/SenseVoice-ONNX",
+      "attribution": "SenseVoiceSmall: Alibaba Group / FunAudioLLM. ONNX conversion: HaujetZhao. 原始模型及衍生权重适用模型协议，不是本软件的 MIT 协议。",
+      "configuration": {
+        "SenseVoiceArgs": {
+          "encoder_path": {"file": "SenseVoice-Encoder.fp16.onnx"},
+          "decoder_path": {"file": "SenseVoice-CTC.fp16.onnx"},
+          "tokenizer_path": {"file": "tokenizer.bpe.model"},
+          "onnx_provider": "CPU"
+        }
+      }
+    },
+    {
+      "id": "fun-asr-nano", "name": "Fun-ASR-Nano", "engine": "fun_asr_nano",
+      "download_enabled": false, "disabled_reason": "首发保留现有手动模型；该变体尚未完成下载许可与内容核验。",
+      "source_page": "https://github.com/HaujetZhao/CapsWriter-Offline/releases/tag/models",
+      "legacy_directory": "Fun-ASR-Nano/Fun-ASR-Nano-GGUF",
+      "required_files": ["Fun-ASR-Nano-Encoder-Adaptor.fp16.onnx", "Fun-ASR-Nano-CTC.fp16.onnx", "Fun-ASR-Nano-Decoder.q5_k.gguf", "tokens.txt"],
+      "configuration": {"FunASRNanoGGUFArgs": {"encoder_onnx_path": {"file": "Fun-ASR-Nano-Encoder-Adaptor.fp16.onnx"}, "ctc_onnx_path": {"file": "Fun-ASR-Nano-CTC.fp16.onnx"}, "decoder_gguf_path": {"file": "Fun-ASR-Nano-Decoder.q5_k.gguf"}, "tokens_path": {"file": "tokens.txt"}}}
+    },
+    {
+      "id": "qwen3-asr", "name": "Qwen3-ASR 1.7B", "engine": "qwen_asr",
+      "download_enabled": false, "disabled_reason": "保留手动模型与 GPU 设置；字幕时间戳另需 ForcedAligner。下载变体待核验。",
+      "source_page": "https://github.com/HaujetZhao/CapsWriter-Offline/releases/tag/models",
+      "legacy_directory": "Qwen3-ASR/Qwen3-ASR-1.7B",
+      "required_files": ["qwen3_asr_encoder_frontend.onnx", "qwen3_asr_encoder_backend.onnx", "qwen3_asr_llm.gguf"],
+      "configuration": {"Qwen3ASRGGUFArgs": {"model_dir": "$MODEL_DIR"}}
+    },
+    {
+      "id": "paraformer", "name": "Paraformer", "engine": "paraformer",
+      "download_enabled": false, "disabled_reason": "保留现有手动模型；标点需单独模型，下载包待核验。",
+      "source_page": "https://github.com/HaujetZhao/CapsWriter-Offline/releases/tag/models",
+      "legacy_directory": "Paraformer/speech_paraformer-large-vad-punc_asr_nat-zh-cn-16k-common-vocab8404-onnx",
+      "required_files": ["model.onnx", "tokens.txt"],
+      "configuration": {"ParaformerArgs": {"paraformer": {"file": "model.onnx"}, "tokens": {"file": "tokens.txt"}}}
+    }
+  ]
+}

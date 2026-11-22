@@ -197,7 +197,12 @@ class LLMHandler:
             logger.debug(f"角色 '{role_name}' 启用历史，当前历史条数: {len(context_manager.history)}")
         
         # 获取选中文字（如果启用）
-        selection_text = get_selected_text(role_config, self.app.state)
+        from core.product.focus import target_allows_output
+        if getattr(role_config, 'enable_read_selection', False) and not target_allows_output():
+            selection_text = ''
+            logger.warning('输入目标已改变，未读取其他窗口的选中文字。')
+        else:
+            selection_text = get_selected_text(role_config, self.app.state)
         
         # 构建消息
         messages = self.message_builder.build_messages(
@@ -246,9 +251,9 @@ class LLMHandler:
         if not role_config:
             if get_live_client_config('output_destination', getattr(Config, 'output_destination', 'typing')) == 'overlay_preview':
                 result_text = TextOutput.strip_punc(text)
-                from .llm_output_overlay import show_overlay_preview
+                from .llm_output_overlay import show_overlay_preview, retain_preview_failure
                 if not show_overlay_preview(result_text):
-                    await output_text(result_text, paste)
+                    retain_preview_failure(result_text)
             else:
                 result_text = text
                 await output_text(text, paste)

@@ -16,6 +16,7 @@ from core.tools.asyncio_to_thread import to_thread
 from core.client.output.text_output import TextOutput
 from core.client.clipboard import paste_text
 from . import logger
+from core.product.focus import guarded_write, keep_for_manual_paste, output_was_blocked
 
 
 class StreamMicroBuffer:
@@ -157,7 +158,7 @@ async def _process_streaming(handler, role_config, content, matched_hotwords) ->
         if content_to_write:
             has_written_first_char = True
             logger.debug(f"output_text: keyboard.write '{content_to_write}'")
-            keyboard.write(content_to_write)
+            guarded_write(content_to_write, keyboard.write)
             pending_buffer = trailing
         else:
             pending_buffer = trailing
@@ -190,14 +191,17 @@ async def _process_streaming(handler, role_config, content, matched_hotwords) ->
         final_text = TextOutput.strip_punc(content).lstrip('\r\n')
         if final_text:
             logger.debug(f"output_text: keyboard.write '{final_text}' (降级)")
-            keyboard.write(final_text)
+            if not guarded_write(final_text, keyboard.write):
+                keep_for_manual_paste(final_text)
         return (final_text, 0, 0.0, "fallback", "empty_response")
 
     # 如果 LLM 只输出标点，会被拦截，就要做补偿输出
     full_output = ''.join(chunks).strip()
     if len(full_output) == 1 and full_output in Config.trash_punc and full_output != '\n':
-        keyboard.write(full_output)
+        guarded_write(full_output, keyboard.write)
 
+    if output_was_blocked():
+        keep_for_manual_paste(polished_text or ''.join(chunks) or content)
     return (TextOutput.strip_punc(polished_text), token_count, gen_time, "success", None)
 
 
@@ -209,5 +213,6 @@ async def output_text(text: str, paste: bool = None):
         clean_text = text.lstrip('\r\n')
         if clean_text:
             logger.debug(f"output_text: keyboard.write '{clean_text}'")
-            keyboard.write(clean_text)
+            if not guarded_write(clean_text, keyboard.write):
+                keep_for_manual_paste(text)
 
